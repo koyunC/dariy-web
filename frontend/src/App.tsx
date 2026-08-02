@@ -12,6 +12,7 @@ import {
   type LogReadDiagnostics,
   type TimeCapsuleLog,
 } from "./lib/logs";
+import { isWithinRecentHistory } from "./lib/history";
 import {
   formatTimestampForUser,
   formatWeightContent,
@@ -80,6 +81,9 @@ function App() {
   const [error, setError] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
+  const [historyReferenceTime, setHistoryReferenceTime] = useState(() =>
+    Date.now(),
+  );
   const [weightUnitPreferences, setWeightUnitPreferences] = useState<
     Record<CurrentUser, WeightUnit>
   >(() => ({
@@ -94,6 +98,14 @@ function App() {
     const syncUserFromUrl = () => setCurrentUser(getCurrentUserFromUrl());
     window.addEventListener("popstate", syncUserFromUrl);
     return () => window.removeEventListener("popstate", syncUserFromUrl);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setHistoryReferenceTime(Date.now()),
+      60_000,
+    );
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -137,12 +149,20 @@ function App() {
     [logs],
   );
 
+  const recentLogs = useMemo(
+    () =>
+      sortedLogs.filter((log) =>
+        isWithinRecentHistory(getLogTimestamp(log), historyReferenceTime),
+      ),
+    [historyReferenceTime, sortedLogs],
+  );
+
   const visibleLogs = useMemo(
     () =>
-      sortedLogs.filter(
+      recentLogs.filter(
         (log) => historyFilter === "all" || log.user === historyFilter,
       ),
-    [historyFilter, sortedLogs],
+    [historyFilter, recentLogs],
   );
 
   const chooseUser = (user: CurrentUser) => {
@@ -265,7 +285,7 @@ function App() {
             <div className="section-heading">
               <div>
                 <p className="eyebrow">Our moments</p>
-                <h2 id="history-title">最近的時光</h2>
+                <h2 id="history-title">最近 7 天</h2>
               </div>
               <span className="record-count">{visibleLogs.length} 則</span>
             </div>
