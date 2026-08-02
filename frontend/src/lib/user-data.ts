@@ -42,7 +42,9 @@ export function formatTimestampForUser(
     second: "2-digit",
     timeZoneName: "short",
     hourCycle: "h23",
-  }).format(new Date(milliseconds));
+  })
+    .format(new Date(milliseconds))
+    .replace(/\s+/gu, " ");
 }
 
 function unitFromText(value: string | undefined): WeightUnit | null {
