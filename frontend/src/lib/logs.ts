@@ -6,6 +6,11 @@ import {
 } from "firebase/firestore";
 
 import { db, firestoreDatabaseId } from "./firebase";
+import {
+  addWeightUnit,
+  getUserDataConvention,
+  type WeightUnit,
+} from "./user-data";
 
 export type TimeCapsuleLog = {
   id: string;
@@ -14,8 +19,10 @@ export type TimeCapsuleLog = {
   createdAt: number | null;
   time: string;
   timeMilliseconds: number | null;
+  timeZone: string;
   updatedAt: string | null;
   user: string;
+  weightUnit: WeightUnit | null;
   isLegacy: boolean;
   issues: string[];
   raw: DocumentData;
@@ -47,31 +54,45 @@ function describeType(value: unknown): string {
   return typeof value;
 }
 
-function formatDate(value: Date): string {
-  return value.toLocaleString("zh-TW", {
-    timeZone: "Asia/Taipei",
-    hour12: false,
-  });
+function formatDate(value: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+    hourCycle: "h23",
+  }).format(value);
 }
 
 function parseDateLike(
   value: unknown,
   field: string,
+  timeZone: string,
   issues: string[],
 ): { display: string; milliseconds: number | null } {
   if (value instanceof Timestamp) {
     return {
-      display: formatDate(value.toDate()),
+      display: formatDate(value.toDate(), timeZone),
       milliseconds: value.toMillis(),
     };
   }
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return { display: formatDate(value), milliseconds: value.getTime() };
+    return {
+      display: formatDate(value, timeZone),
+      milliseconds: value.getTime(),
+    };
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
-    return { display: formatDate(new Date(value)), milliseconds: value };
+    return {
+      display: formatDate(new Date(value), timeZone),
+      milliseconds: value,
+    };
   }
 
   if (typeof value === "string") {
@@ -121,22 +142,34 @@ function parseUser(value: unknown, issues: string[]): string {
 
 function parseDocument(id: string, data: DocumentData): TimeCapsuleLog {
   const issues: string[] = [];
-  const time = parseDateLike(data.time, "time", issues);
-  const createdAt = parseDateLike(data.createdAt, "createdAt", issues);
+  const user = parseUser(data.user, issues);
+  const convention = getUserDataConvention(user);
+  const timeZone = convention?.timeZone ?? "UTC";
+  const actionId = parseText(data.actionId, "actionId", issues);
+  const content = parseText(data.content, "content", issues);
+  const time = parseDateLike(data.time, "time", timeZone, issues);
+  const createdAt = parseDateLike(
+    data.createdAt,
+    "createdAt",
+    timeZone,
+    issues,
+  );
   const updatedAt =
     data.updatedAt === undefined
       ? null
-      : parseDateLike(data.updatedAt, "updatedAt", issues).display;
+      : parseDateLike(data.updatedAt, "updatedAt", timeZone, issues).display;
 
   return {
     id,
-    actionId: parseText(data.actionId, "actionId", issues),
-    content: parseText(data.content, "content", issues),
+    actionId,
+    content: addWeightUnit(content, actionId, convention),
     createdAt: createdAt.milliseconds,
     time: time.display,
     timeMilliseconds: time.milliseconds,
+    timeZone,
     updatedAt,
-    user: parseUser(data.user, issues),
+    user,
+    weightUnit: convention?.weightUnit ?? null,
     isLegacy: issues.length > 0,
     issues,
     raw: data,
