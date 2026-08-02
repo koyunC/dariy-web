@@ -7,7 +7,6 @@ import {
 
 import { db, firestoreDatabaseId } from "./firebase";
 import {
-  addWeightUnit,
   getUserDataConvention,
   type WeightUnit,
 } from "./user-data";
@@ -19,10 +18,9 @@ export type TimeCapsuleLog = {
   createdAt: number | null;
   time: string;
   timeMilliseconds: number | null;
-  timeZone: string;
   updatedAt: string | null;
   user: string;
-  weightUnit: WeightUnit | null;
+  sourceWeightUnit: WeightUnit | null;
   isLegacy: boolean;
   issues: string[];
   raw: DocumentData;
@@ -54,43 +52,28 @@ function describeType(value: unknown): string {
   return typeof value;
 }
 
-function formatDate(value: Date, timeZone: string): string {
-  return new Intl.DateTimeFormat("zh-TW", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZoneName: "short",
-    hourCycle: "h23",
-  }).format(value);
-}
-
 function parseDateLike(
   value: unknown,
   field: string,
-  timeZone: string,
   issues: string[],
 ): { display: string; milliseconds: number | null } {
   if (value instanceof Timestamp) {
     return {
-      display: formatDate(value.toDate(), timeZone),
+      display: value.toDate().toISOString(),
       milliseconds: value.toMillis(),
     };
   }
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return {
-      display: formatDate(value, timeZone),
+      display: value.toISOString(),
       milliseconds: value.getTime(),
     };
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
     return {
-      display: formatDate(new Date(value), timeZone),
+      display: new Date(value).toISOString(),
       milliseconds: value,
     };
   }
@@ -144,32 +127,25 @@ function parseDocument(id: string, data: DocumentData): TimeCapsuleLog {
   const issues: string[] = [];
   const user = parseUser(data.user, issues);
   const convention = getUserDataConvention(user);
-  const timeZone = convention?.timeZone ?? "UTC";
   const actionId = parseText(data.actionId, "actionId", issues);
   const content = parseText(data.content, "content", issues);
-  const time = parseDateLike(data.time, "time", timeZone, issues);
-  const createdAt = parseDateLike(
-    data.createdAt,
-    "createdAt",
-    timeZone,
-    issues,
-  );
+  const time = parseDateLike(data.time, "time", issues);
+  const createdAt = parseDateLike(data.createdAt, "createdAt", issues);
   const updatedAt =
     data.updatedAt === undefined
       ? null
-      : parseDateLike(data.updatedAt, "updatedAt", timeZone, issues).display;
+      : parseDateLike(data.updatedAt, "updatedAt", issues).display;
 
   return {
     id,
     actionId,
-    content: addWeightUnit(content, actionId, convention),
+    content,
     createdAt: createdAt.milliseconds,
     time: time.display,
     timeMilliseconds: time.milliseconds,
-    timeZone,
     updatedAt,
     user,
-    weightUnit: convention?.weightUnit ?? null,
+    sourceWeightUnit: convention?.weightUnit ?? null,
     isLegacy: issues.length > 0,
     issues,
     raw: data,

@@ -12,6 +12,12 @@ import {
   type LogReadDiagnostics,
   type TimeCapsuleLog,
 } from "./lib/logs";
+import {
+  formatTimestampForUser,
+  formatWeightContent,
+  userDataConventions,
+  type WeightUnit,
+} from "./lib/user-data";
 
 const profiles: Record<CurrentUser, { name: string; symbol: string; greeting: string }> = {
   cloud: { name: "可雲", symbol: "☁️", greeting: "雲朵今天也有好好生活嗎？" },
@@ -32,9 +38,9 @@ const actions = [
 
 type HistoryFilter = "all" | CurrentUser;
 
-function formatToday(): string {
+function formatToday(user: CurrentUser): string {
   return new Intl.DateTimeFormat("zh-TW", {
-    timeZone: "Asia/Taipei",
+    timeZone: userDataConventions[user].timeZone,
     month: "long",
     day: "numeric",
     weekday: "long",
@@ -49,6 +55,19 @@ function getActionIcon(actionId: string): string {
   return actions.find((action) => action.id === actionId)?.icon ?? "✦";
 }
 
+function getSavedWeightUnit(user: CurrentUser): WeightUnit {
+  try {
+    const savedUnit = window.localStorage.getItem(
+      `parallel-time:weight-unit:${user}`,
+    );
+    if (savedUnit === "lb" || savedUnit === "kg") return savedUnit;
+  } catch {
+    // Storage may be unavailable in private browsing; the user default is safe.
+  }
+
+  return userDataConventions[user].weightUnit;
+}
+
 function App() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() =>
     getCurrentUserFromUrl(),
@@ -61,6 +80,15 @@ function App() {
   const [error, setError] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
+  const [weightUnitPreferences, setWeightUnitPreferences] = useState<
+    Record<CurrentUser, WeightUnit>
+  >(() => ({
+    cloud: getSavedWeightUnit("cloud"),
+    stone: getSavedWeightUnit("stone"),
+  }));
+  const displayWeightUnit = currentUser
+    ? weightUnitPreferences[currentUser]
+    : "kg";
 
   useEffect(() => {
     const syncUserFromUrl = () => setCurrentUser(getCurrentUserFromUrl());
@@ -123,6 +151,24 @@ function App() {
     setHistoryFilter("all");
   };
 
+  const chooseWeightUnit = (unit: WeightUnit) => {
+    if (!currentUser) return;
+
+    setWeightUnitPreferences((preferences) => ({
+      ...preferences,
+      [currentUser]: unit,
+    }));
+
+    try {
+      window.localStorage.setItem(
+        `parallel-time:weight-unit:${currentUser}`,
+        unit,
+      );
+    } catch {
+      // Keep the in-memory preference when persistent storage is unavailable.
+    }
+  };
+
   return (
     <div className={`app-shell theme-${currentUser ?? "shared"}`}>
       <header className="topbar">
@@ -174,7 +220,7 @@ function App() {
         <main className="home-page">
           <section className="welcome-card">
             <div>
-              <p className="eyebrow">{formatToday()}</p>
+              <p className="eyebrow">{formatToday(currentUser)}</p>
               <h1>{profiles[currentUser].greeting}</h1>
               <p className="welcome-status">{status}</p>
             </div>
@@ -235,6 +281,24 @@ function App() {
                 </button>
               ))}
             </div>
+            <div className="display-preferences" aria-label="顯示偏好">
+              <span>
+                時間：{userDataConventions[currentUser].timeZoneLabel}
+              </span>
+              <div className="unit-toggle" aria-label="體重顯示單位">
+                {(["lb", "kg"] as const).map((unit) => (
+                  <button
+                    key={unit}
+                    type="button"
+                    className={displayWeightUnit === unit ? "is-active" : ""}
+                    onClick={() => chooseWeightUnit(unit)}
+                    aria-pressed={displayWeightUnit === unit}
+                  >
+                    {unit}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {visibleLogs.length > 0 ? (
               <ol className="timeline">
@@ -250,9 +314,23 @@ function App() {
                       <article>
                         <div className="log-meta">
                           <strong>{knownUser ? profiles[knownUser].name : log.user}</strong>
-                          <time>{log.time}</time>
+                          <time>
+                            {log.timeMilliseconds === null
+                              ? log.time
+                              : formatTimestampForUser(
+                                  log.timeMilliseconds,
+                                  currentUser,
+                                )}
+                          </time>
                         </div>
-                        <p>{log.content}</p>
+                        <p>
+                          {formatWeightContent(
+                            log.content,
+                            log.actionId,
+                            log.sourceWeightUnit,
+                            displayWeightUnit,
+                          )}
+                        </p>
                         {log.isLegacy && <span className="legacy-tag">舊格式資料</span>}
                       </article>
                     </li>
