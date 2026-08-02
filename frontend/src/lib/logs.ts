@@ -13,6 +13,7 @@ export type TimeCapsuleLog = {
   content: string;
   createdAt: number | null;
   time: string;
+  timeMilliseconds: number | null;
   updatedAt: string | null;
   user: string;
   isLegacy: boolean;
@@ -133,6 +134,7 @@ function parseDocument(id: string, data: DocumentData): TimeCapsuleLog {
     content: parseText(data.content, "content", issues),
     createdAt: createdAt.milliseconds,
     time: time.display,
+    timeMilliseconds: time.milliseconds,
     updatedAt,
     user: parseUser(data.user, issues),
     isLegacy: issues.length > 0,
