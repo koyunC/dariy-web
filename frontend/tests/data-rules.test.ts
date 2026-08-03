@@ -8,6 +8,10 @@ import {
 } from "../src/lib/check-in-stats.ts";
 import type { TimeCapsuleLog } from "../src/lib/logs.ts";
 import {
+  createSevenDayMemoryTimeline,
+  formatTimelineDate,
+} from "../src/lib/memory-timeline.ts";
+import {
   defaultCheckInGoals,
   hasCompleteCheckInGoals,
   normalizeCheckInGoals,
@@ -298,4 +302,42 @@ test("rolling ranges include today and the requested number of days", () => {
     ),
     { start: "2026-07-28", end: "2026-08-03" },
   );
+});
+
+test("memory timeline places the viewer above and partner below", () => {
+  const stoneLog = logAt("stone", "2026-08-03T01:00:00Z");
+  const cloudLog = logAt("cloud", "2026-08-03T02:00:00Z");
+  const timeline = createSevenDayMemoryTimeline(
+    [stoneLog, cloudLog],
+    "stone",
+    Date.parse("2026-08-03T12:00:00Z"),
+    "Asia/Taipei",
+  );
+
+  assert.equal(timeline.length, 7);
+  assert.equal(timeline[0].dateKey, "2026-07-28");
+  assert.equal(timeline[6].dateKey, "2026-08-03");
+  assert.deepEqual(timeline[6].currentUserLogs.map((log) => log.id), [
+    stoneLog.id,
+  ]);
+  assert.deepEqual(timeline[6].partnerLogs.map((log) => log.id), [
+    cloudLog.id,
+  ]);
+});
+
+test("memory timeline uses the viewer's display time zone", () => {
+  const cloudLog = logAt("cloud", "2026-08-03T02:00:00Z");
+  const timeline = createSevenDayMemoryTimeline(
+    [cloudLog],
+    "cloud",
+    Date.parse("2026-08-03T12:00:00Z"),
+    "America/New_York",
+  );
+
+  assert.equal(timeline.at(-2)?.dateKey, "2026-08-02");
+  assert.equal(timeline.at(-2)?.currentUserLogs.length, 1);
+  assert.deepEqual(formatTimelineDate("2026-08-03"), {
+    weekday: "週一",
+    date: "08/03",
+  });
 });

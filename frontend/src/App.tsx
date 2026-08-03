@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import "./App.css";
 import { checkInActions } from "./lib/action-catalog";
@@ -14,7 +14,6 @@ import {
   type LogReadDiagnostics,
   type TimeCapsuleLog,
 } from "./lib/logs";
-import { isWithinRecentHistory } from "./lib/history";
 import {
   calculateCheckInProgress,
   getRollingDateRange,
@@ -40,13 +39,16 @@ import {
   getUserCheckInGoals,
   saveUserCheckInGoals,
 } from "./lib/user-preferences";
+import {
+  createSevenDayMemoryTimeline,
+  formatTimelineDate,
+} from "./lib/memory-timeline";
 
 const profiles: Record<CurrentUser, { name: string; symbol: string; greeting: string }> = {
   cloud: { name: "可雲", symbol: "☁️", greeting: "雲朵今天也有好好生活嗎？" },
   stone: { name: "阿寶", symbol: "🪨", greeting: "石頭今天想留下什麼？" },
 };
 
-type HistoryFilter = "all" | CurrentUser;
 type ProgressPeriod = "week" | "month" | "custom";
 
 type ProgressCardProps = {
@@ -150,8 +152,10 @@ function App() {
   const [preferencesError, setPreferencesError] = useState("");
   const [status, setStatus] = useState("正在連接兩人的時光…");
   const [error, setError] = useState("");
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
+  const [selectedTimelineLog, setSelectedTimelineLog] =
+    useState<TimeCapsuleLog | null>(null);
+  const timelineScrollReference = useRef<HTMLDivElement | null>(null);
   const [historyReferenceTime, setHistoryReferenceTime] = useState(() =>
     Date.now(),
   );
@@ -258,21 +262,34 @@ function App() {
     [logs],
   );
 
-  const recentLogs = useMemo(
-    () =>
-      sortedLogs.filter((log) =>
-        isWithinRecentHistory(getLogTimestamp(log), historyReferenceTime),
-      ),
-    [historyReferenceTime, sortedLogs],
+  const memoryTimeline = useMemo(() => {
+    if (!currentUser || !timeZoneSync) return [];
+    return createSevenDayMemoryTimeline(
+      sortedLogs,
+      currentUser,
+      historyReferenceTime,
+      timeZoneSync.effectiveTimeZone,
+    );
+  }, [currentUser, historyReferenceTime, sortedLogs, timeZoneSync]);
+
+  const timelineRecordCount = useMemo(
+    () => memoryTimeline.reduce(
+      (total, day) =>
+        total + day.currentUserLogs.length + day.partnerLogs.length,
+      0,
+    ),
+    [memoryTimeline],
   );
 
-  const visibleLogs = useMemo(
-    () =>
-      recentLogs.filter(
-        (log) => historyFilter === "all" || log.user === historyFilter,
-      ),
-    [historyFilter, recentLogs],
-  );
+  useEffect(() => {
+    const scroller = timelineScrollReference.current;
+    if (!scroller || timelineRecordCount === 0) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scroller.scrollLeft = scroller.scrollWidth;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentUser, timelineRecordCount]);
 
   const actionProgress = useMemo(() => {
     if (!currentUser || !timeZoneSync) return null;
@@ -320,7 +337,7 @@ function App() {
   const chooseUser = (user: CurrentUser) => {
     setCurrentUserInUrl(user);
     setCurrentUser(user);
-    setHistoryFilter("all");
+    setSelectedTimelineLog(null);
     setProfileMenuOpen(false);
   };
 
@@ -593,19 +610,7 @@ function App() {
                 <p className="eyebrow">Our moments</p>
                 <h2 id="history-title">最近 7 天</h2>
               </div>
-              <span className="record-count">{visibleLogs.length} 則</span>
-            </div>
-            <div className="filter-tabs" aria-label="篩選紀錄">
-              {(["all", "cloud", "stone"] as const).map((filter) => (
-                <button
-                  key={filter}
-                  type="button"
-                  className={historyFilter === filter ? "is-active" : ""}
-                  onClick={() => setHistoryFilter(filter)}
-                >
-                  {filter === "all" ? "全部" : `${profiles[filter].symbol} ${profiles[filter].name}`}
-                </button>
-              ))}
+              <span className="record-count">{timelineRecordCount} 則</span>
             </div>
             <div className="display-preferences" aria-label="顯示偏好">
               <span>
@@ -628,48 +633,116 @@ function App() {
               </div>
             </div>
 
-            {visibleLogs.length > 0 ? (
-              <ol className="timeline">
-                {visibleLogs.slice(0, 30).map((log) => {
-                  const knownUser = log.user === "cloud" || log.user === "stone"
-                    ? log.user
-                    : null;
-                  return (
-                    <li key={log.id}>
-                      <div className="timeline-icon" aria-hidden="true">
-                        {getActionIcon(log.actionId)}
-                      </div>
-                      <article>
-                        <div className="log-meta">
-                          <strong>{knownUser ? profiles[knownUser].name : log.user}</strong>
-                          <time>
-                            {log.timeMilliseconds === null || !timeZoneSync
-                              ? log.time
-                              : formatTimestampInTimeZone(
-                                  log.timeMilliseconds,
-                                  timeZoneSync.effectiveTimeZone,
-                                )}
-                          </time>
+            {timelineRecordCount > 0 ? (
+              <>
+                <div className="memory-timeline-legend" aria-label="時間軸位置說明">
+                  <span>↑ {profiles[currentUser].symbol} {profiles[currentUser].name}</span>
+                  <span>
+                    ↓ {currentUser === "cloud" ? profiles.stone.symbol : profiles.cloud.symbol}{" "}
+                    {currentUser === "cloud" ? profiles.stone.name : profiles.cloud.name}
+                  </span>
+                </div>
+                <div
+                  className="memory-timeline-scroll"
+                  ref={timelineScrollReference}
+                  aria-label="最近七天雙人回憶時間軸"
+                >
+                  <div className="memory-timeline-track">
+                  {memoryTimeline.map((day) => {
+                    const formattedDate = formatTimelineDate(day.dateKey);
+                    return (
+                      <section className="memory-day" key={day.dateKey}>
+                        <div className={`memory-lane memory-lane-current ${day.currentUserLogs.length ? "has-events" : ""}`}>
+                          <div className="memory-events">
+                            {day.currentUserLogs.map((log) => (
+                              <button
+                                key={log.id}
+                                type="button"
+                                className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
+                                onClick={() => setSelectedTimelineLog(log)}
+                                aria-label={`${profiles[currentUser].name}：${log.content}`}
+                              >
+                                {getActionIcon(log.actionId)}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                        <p>
-                          {formatWeightContent(
-                            log.content,
-                            log.actionId,
-                            log.sourceWeightUnit,
-                            displayWeightUnit,
-                          )}
-                        </p>
-                        {log.isLegacy && <span className="legacy-tag">舊格式資料</span>}
-                      </article>
-                    </li>
-                  );
-                })}
-              </ol>
+                        <time className="memory-axis-date" dateTime={day.dateKey}>
+                          <strong>{formattedDate.weekday}</strong>
+                          <small>{formattedDate.date}</small>
+                        </time>
+                        <div className={`memory-lane memory-lane-partner ${day.partnerLogs.length ? "has-events" : ""}`}>
+                          <div className="memory-events">
+                            {day.partnerLogs.map((log) => {
+                              const partner = currentUser === "cloud" ? "stone" : "cloud";
+                              return (
+                                <button
+                                  key={log.id}
+                                  type="button"
+                                  className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
+                                  onClick={() => setSelectedTimelineLog(log)}
+                                  aria-label={`${profiles[partner].name}：${log.content}`}
+                                >
+                                  {getActionIcon(log.actionId)}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </section>
+                    );
+                    })}
+                  </div>
+                </div>
+              </>
             ) : (
               <div className="empty-state">
                 <span>✦</span>
-                <p>{diagnostics ? "這個篩選條件還沒有紀錄" : "正在載入紀錄…"}</p>
+                <p>{diagnostics ? "最近七天還沒有紀錄" : "正在載入紀錄…"}</p>
               </div>
+            )}
+
+            {selectedTimelineLog && (
+              <article className="memory-detail">
+                <div className="timeline-icon" aria-hidden="true">
+                  {getActionIcon(selectedTimelineLog.actionId)}
+                </div>
+                <div>
+                  <div className="log-meta">
+                    <strong>
+                      {selectedTimelineLog.user === "cloud" || selectedTimelineLog.user === "stone"
+                        ? profiles[selectedTimelineLog.user].name
+                        : selectedTimelineLog.user}
+                    </strong>
+                    <time>
+                      {selectedTimelineLog.timeMilliseconds === null || !timeZoneSync
+                        ? selectedTimelineLog.time
+                        : formatTimestampInTimeZone(
+                            selectedTimelineLog.timeMilliseconds,
+                            timeZoneSync.effectiveTimeZone,
+                          )}
+                    </time>
+                  </div>
+                  <p>
+                    {formatWeightContent(
+                      selectedTimelineLog.content,
+                      selectedTimelineLog.actionId,
+                      selectedTimelineLog.sourceWeightUnit,
+                      displayWeightUnit,
+                    )}
+                  </p>
+                  {selectedTimelineLog.isLegacy && (
+                    <span className="legacy-tag">舊格式資料</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTimelineLog(null)}
+                  aria-label="關閉回憶內容"
+                >
+                  ×
+                </button>
+              </article>
             )}
           </section>
 
