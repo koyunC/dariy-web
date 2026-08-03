@@ -149,6 +149,7 @@ function App() {
     useState<LogReadDiagnostics | null>(null);
   const [uid, setUid] = useState("");
   const [authEmail, setAuthEmail] = useState("");
+  const [authRevision, setAuthRevision] = useState(0);
   const [timeZoneSync, setTimeZoneSync] =
     useState<UserTimeZoneSyncResult | null>(null);
   const [checkInGoals, setCheckInGoals] = useState<CheckInGoals>(() =>
@@ -281,7 +282,7 @@ function App() {
     return () => {
       isActive = false;
     };
-  }, [currentUser]);
+  }, [authRevision, currentUser]);
 
   const sortedLogs = useMemo(
     () => [...logs].sort((a, b) => getLogTimestamp(b) - getLogTimestamp(a)),
@@ -460,7 +461,14 @@ function App() {
     setError("");
     setStatus("正在開啟 Google 登入…");
     try {
-      await signInWithGoogle();
+      const user = await signInWithGoogle();
+      if (user) {
+        setUid(user.uid);
+        setAuthEmail(user.email ?? "");
+        setAuthRevision((revision) => revision + 1);
+      } else {
+        setStatus("正在返回 Google 登入…");
+      }
     } catch (caughtError) {
       setStatus("請使用 Google 登入");
       setError(
