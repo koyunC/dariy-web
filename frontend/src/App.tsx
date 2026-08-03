@@ -42,6 +42,7 @@ import {
 import {
   createSevenDayMemoryTimeline,
   formatTimelineDate,
+  getOrderedMemoryDayLogs,
 } from "./lib/memory-timeline";
 
 const profiles: Record<CurrentUser, { name: string; symbol: string; greeting: string }> = {
@@ -155,6 +156,8 @@ function App() {
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [selectedTimelineLog, setSelectedTimelineLog] =
     useState<TimeCapsuleLog | null>(null);
+  const [selectedTimelineDayKey, setSelectedTimelineDayKey] =
+    useState<string | null>(null);
   const timelineScrollReference = useRef<HTMLDivElement | null>(null);
   const [historyReferenceTime, setHistoryReferenceTime] = useState(() =>
     Date.now(),
@@ -281,6 +284,20 @@ function App() {
     [memoryTimeline],
   );
 
+  const selectedTimelineDay = useMemo(
+    () => memoryTimeline.find(
+      (day) => day.dateKey === selectedTimelineDayKey,
+    ) ?? null,
+    [memoryTimeline, selectedTimelineDayKey],
+  );
+
+  const selectedDayLogs = useMemo(
+    () => selectedTimelineDay
+      ? getOrderedMemoryDayLogs(selectedTimelineDay)
+      : [],
+    [selectedTimelineDay],
+  );
+
   useEffect(() => {
     const scroller = timelineScrollReference.current;
     if (!scroller || timelineRecordCount === 0) return;
@@ -338,6 +355,7 @@ function App() {
     setCurrentUserInUrl(user);
     setCurrentUser(user);
     setSelectedTimelineLog(null);
+    setSelectedTimelineDayKey(null);
     setProfileMenuOpen(false);
   };
 
@@ -635,65 +653,150 @@ function App() {
 
             {timelineRecordCount > 0 ? (
               <>
-                <div className="memory-timeline-legend" aria-label="時間軸位置說明">
-                  <span>↑ {profiles[currentUser].symbol} {profiles[currentUser].name}</span>
-                  <span>
-                    ↓ {currentUser === "cloud" ? profiles.stone.symbol : profiles.cloud.symbol}{" "}
-                    {currentUser === "cloud" ? profiles.stone.name : profiles.cloud.name}
-                  </span>
-                </div>
-                <div
-                  className="memory-timeline-scroll"
-                  ref={timelineScrollReference}
-                  aria-label="最近七天雙人回憶時間軸"
-                >
-                  <div className="memory-timeline-track">
-                  {memoryTimeline.map((day) => {
-                    const formattedDate = formatTimelineDate(day.dateKey);
-                    return (
-                      <section className="memory-day" key={day.dateKey}>
-                        <div className={`memory-lane memory-lane-current ${day.currentUserLogs.length ? "has-events" : ""}`}>
-                          <div className="memory-events">
-                            {day.currentUserLogs.map((log) => (
+                {!selectedTimelineDay ? (
+                  <>
+                    <div className="memory-timeline-legend" aria-label="時間軸位置說明">
+                      <span>↑ {profiles[currentUser].symbol} {profiles[currentUser].name}</span>
+                      <span>
+                        ↓ {currentUser === "cloud" ? profiles.stone.symbol : profiles.cloud.symbol}{" "}
+                        {currentUser === "cloud" ? profiles.stone.name : profiles.cloud.name}
+                      </span>
+                    </div>
+                    <div
+                      className="memory-timeline-scroll"
+                      ref={timelineScrollReference}
+                      aria-label="最近七天雙人回憶時間軸"
+                    >
+                      <div className="memory-timeline-track">
+                        {memoryTimeline.map((day) => {
+                          const formattedDate = formatTimelineDate(day.dateKey);
+                          return (
+                            <section className="memory-day" key={day.dateKey}>
+                              <div className={`memory-lane memory-lane-current ${day.currentUserLogs.length ? "has-events" : ""}`}>
+                                <div className="memory-events">
+                                  {day.currentUserLogs.map((log) => (
+                                    <button
+                                      key={log.id}
+                                      type="button"
+                                      className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
+                                      onClick={() => setSelectedTimelineLog(log)}
+                                      aria-label={`${profiles[currentUser].name}：${log.content}`}
+                                    >
+                                      {getActionIcon(log.actionId)}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                               <button
-                                key={log.id}
+                                className="memory-axis-date"
                                 type="button"
-                                className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
-                                onClick={() => setSelectedTimelineLog(log)}
-                                aria-label={`${profiles[currentUser].name}：${log.content}`}
+                                onClick={() => {
+                                  setSelectedTimelineDayKey(day.dateKey);
+                                  setSelectedTimelineLog(null);
+                                }}
+                                aria-label={`放大檢視 ${formattedDate.date} ${formattedDate.weekday}`}
                               >
-                                {getActionIcon(log.actionId)}
+                                <strong>{formattedDate.weekday}</strong>
+                                <small>{formattedDate.date}</small>
                               </button>
-                            ))}
-                          </div>
+                              <div className={`memory-lane memory-lane-partner ${day.partnerLogs.length ? "has-events" : ""}`}>
+                                <div className="memory-events">
+                                  {day.partnerLogs.map((log) => {
+                                    const partner = currentUser === "cloud" ? "stone" : "cloud";
+                                    return (
+                                      <button
+                                        key={log.id}
+                                        type="button"
+                                        className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
+                                        onClick={() => setSelectedTimelineLog(log)}
+                                        aria-label={`${profiles[partner].name}：${log.content}`}
+                                      >
+                                        {getActionIcon(log.actionId)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </section>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="memory-day-focus">
+                    <div className="memory-day-focus-heading">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTimelineDayKey(null);
+                          setSelectedTimelineLog(null);
+                        }}
+                      >
+                        ← 週檢視
+                      </button>
+                      <strong>
+                        {formatTimelineDate(selectedTimelineDay.dateKey).date}{" "}
+                        {formatTimelineDate(selectedTimelineDay.dateKey).weekday}
+                      </strong>
+                      <span>{selectedDayLogs.length} 則</span>
+                    </div>
+                    {selectedDayLogs.length > 0 ? (
+                      <div className="memory-day-detail-scroll" aria-label={`${selectedTimelineDay.dateKey} 詳細時間軸`}>
+                        <div className="memory-day-detail-track">
+                          {selectedDayLogs.map((log) => {
+                            const isCurrentUser = log.user === currentUser;
+                            const timestamp = getLogTimestamp(log);
+                            const displayTime = timestamp && timeZoneSync
+                              ? new Intl.DateTimeFormat("zh-TW", {
+                                  timeZone: timeZoneSync.effectiveTimeZone,
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                  hourCycle: "h23",
+                                }).format(new Date(timestamp))
+                              : "—";
+                            return (
+                              <article className="memory-day-event" key={log.id}>
+                                <div className={`memory-day-event-slot memory-day-event-upper ${isCurrentUser ? "has-event" : ""}`}>
+                                  {isCurrentUser && (
+                                    <button
+                                      type="button"
+                                      className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
+                                      onClick={() => setSelectedTimelineLog(log)}
+                                      aria-label={`${profiles[currentUser].name}：${log.content}`}
+                                    >
+                                      {getActionIcon(log.actionId)}
+                                    </button>
+                                  )}
+                                </div>
+                                <time dateTime={timestamp ? new Date(timestamp).toISOString() : undefined}>
+                                  {displayTime}
+                                </time>
+                                <div className={`memory-day-event-slot memory-day-event-lower ${!isCurrentUser ? "has-event" : ""}`}>
+                                  {!isCurrentUser && (
+                                    <button
+                                      type="button"
+                                      className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
+                                      onClick={() => setSelectedTimelineLog(log)}
+                                      aria-label={`${log.user === "cloud" ? profiles.cloud.name : profiles.stone.name}：${log.content}`}
+                                    >
+                                      {getActionIcon(log.actionId)}
+                                    </button>
+                                  )}
+                                </div>
+                              </article>
+                            );
+                          })}
                         </div>
-                        <time className="memory-axis-date" dateTime={day.dateKey}>
-                          <strong>{formattedDate.weekday}</strong>
-                          <small>{formattedDate.date}</small>
-                        </time>
-                        <div className={`memory-lane memory-lane-partner ${day.partnerLogs.length ? "has-events" : ""}`}>
-                          <div className="memory-events">
-                            {day.partnerLogs.map((log) => {
-                              const partner = currentUser === "cloud" ? "stone" : "cloud";
-                              return (
-                                <button
-                                  key={log.id}
-                                  type="button"
-                                  className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
-                                  onClick={() => setSelectedTimelineLog(log)}
-                                  aria-label={`${profiles[partner].name}：${log.content}`}
-                                >
-                                  {getActionIcon(log.actionId)}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </section>
-                    );
-                    })}
+                      </div>
+                    ) : (
+                      <div className="empty-state memory-day-empty">
+                        <span>✦</span>
+                        <p>這一天還沒有紀錄</p>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
               </>
             ) : (
               <div className="empty-state">

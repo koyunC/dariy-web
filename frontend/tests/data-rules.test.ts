@@ -10,6 +10,7 @@ import type { TimeCapsuleLog } from "../src/lib/logs.ts";
 import {
   createSevenDayMemoryTimeline,
   formatTimelineDate,
+  getOrderedMemoryDayLogs,
 } from "../src/lib/memory-timeline.ts";
 import {
   defaultCheckInGoals,
@@ -340,4 +341,22 @@ test("memory timeline uses the viewer's display time zone", () => {
     weekday: "週一",
     date: "08/03",
   });
+});
+
+test("expanded day logs keep exact chronological order across users", () => {
+  const first = logAt("cloud", "2026-08-03T01:00:00Z");
+  const second = logAt("stone", "2026-08-03T02:00:00Z");
+  const third = logAt("cloud", "2026-08-03T03:00:00Z");
+  const [day] = createSevenDayMemoryTimeline(
+    [third, first, second],
+    "stone",
+    Date.parse("2026-08-03T12:00:00Z"),
+    "Asia/Taipei",
+  ).slice(-1);
+
+  assert.deepEqual(getOrderedMemoryDayLogs(day).map((log) => log.id), [
+    first.id,
+    second.id,
+    third.id,
+  ]);
 });

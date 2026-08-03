@@ -80,3 +80,13 @@ export function formatTimelineDate(dateKey: string): {
     date: `${dateKey.slice(5, 7)}/${dateKey.slice(8, 10)}`,
   };
 }
+
+export function getOrderedMemoryDayLogs(
+  day: MemoryTimelineDay,
+): TimeCapsuleLog[] {
+  return [...day.currentUserLogs, ...day.partnerLogs].sort((left, right) => {
+    const timeDifference =
+      (getLogTimestamp(left) ?? 0) - (getLogTimestamp(right) ?? 0);
+    return timeDifference || left.id.localeCompare(right.id);
+  });
+}
