@@ -37,6 +37,7 @@ import {
 } from "./lib/user-data";
 import {
   syncUserTimeZone,
+  resolveCurrentUserFromAuthUID,
   type UserTimeZoneSyncResult,
 } from "./lib/user-metadata";
 import {
@@ -196,9 +197,17 @@ function App() {
   const displayWeightUnit = currentUser
     ? weightUnitPreferences[currentUser]
     : "kg";
+  const identityReady = Boolean(
+    currentUser
+    && uid
+    && timeZoneSync?.user === currentUser,
+  );
 
   useEffect(() => {
-    const syncUserFromUrl = () => setCurrentUser(getCurrentUserFromUrl());
+    const syncUserFromUrl = () => {
+      setCurrentUser(getCurrentUserFromUrl());
+      setTimeZoneSync(null);
+    };
     window.addEventListener("popstate", syncUserFromUrl);
     return () => window.removeEventListener("popstate", syncUserFromUrl);
   }, []);
@@ -236,13 +245,24 @@ function App() {
         if (!isActive) return;
         setUid(user.uid);
         setAuthEmail(user.email ?? "");
-        if (!currentUser) {
-          setStatus("請先選擇使用者");
+
+        setStatus("正在確認 Google 身份…");
+        const resolvedUser = await resolveCurrentUserFromAuthUID(user.uid);
+        if (!isActive) return;
+
+        const requestedUser = getCurrentUserFromUrl();
+        if (requestedUser !== resolvedUser || currentUser !== resolvedUser) {
+          // The URL is only a navigation hint. Always replace it with the
+          // profile bound to the authenticated Google UID before loading or
+          // writing any profile data.
+          setCurrentUserInUrl(resolvedUser);
+          setCurrentUser(resolvedUser);
+          setStatus(`已確認 ${profiles[resolvedUser].name} 身份`);
           return;
         }
 
         setStatus("正在同步目前時區…");
-        const syncedTimeZone = await syncUserTimeZone(currentUser);
+        const syncedTimeZone = await syncUserTimeZone(resolvedUser);
         if (!isActive) return;
 
         console.log("detected timeZone", syncedTimeZone.detectedTimeZone);
@@ -259,7 +279,7 @@ function App() {
 
         const [result, storedCheckInGoals] = await Promise.all([
           getTimeCapsuleLogs(),
-          getUserCheckInGoals(currentUser),
+          getUserCheckInGoals(resolvedUser),
         ]);
         if (!isActive) return;
 
@@ -384,6 +404,7 @@ function App() {
   };
 
   const openPreferences = () => {
+    if (!identityReady) return;
     setDraftCheckInGoals(normalizeCheckInGoals(checkInGoals));
     setPreferencesError("");
     setProfileMenuOpen(false);
@@ -417,7 +438,7 @@ function App() {
   };
 
   const savePreferences = async () => {
-    if (!currentUser || preferencesSaving) return;
+    if (!currentUser || !identityReady || preferencesSaving) return;
 
     setPreferencesSaving(true);
     setPreferencesError("");
@@ -483,6 +504,7 @@ function App() {
     setCurrentUser(null);
     setUid("");
     setAuthEmail("");
+    setTimeZoneSync(null);
     setProfileMenuOpen(false);
   };
 
@@ -497,6 +519,7 @@ function App() {
   const submitCheckIn = async () => {
     if (
       !currentUser
+      || !identityReady
       || !timeZoneSync
       || !selectedAction
       || checkInSaving
@@ -551,7 +574,7 @@ function App() {
           <span className="brand-mark" aria-hidden="true">∞</span>
           <span>Parallel Time</span>
         </a>
-        {currentUser && (
+        {currentUser && identityReady && (
           <div className="profile-menu-wrap">
             <button
               className="profile-button"
@@ -595,7 +618,7 @@ function App() {
             <p className="eyebrow">歡迎回來</p>
             <h1 id="identity-title">你是哪一位？</h1>
             <p className="identity-copy">
-              選擇身份後，網址會記住你。下次使用相同連結就能直接進入。
+              選擇入口後，登入時會用 Google UID 驗證身份；網址只負責記住入口。
             </p>
             <div className="identity-options">
               <button type="button" onClick={() => chooseUser("cloud")}>

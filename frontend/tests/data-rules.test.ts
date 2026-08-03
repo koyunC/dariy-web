@@ -22,6 +22,30 @@ import {
   formatTimestampForUser,
   formatWeightContent,
 } from "../src/lib/user-data.ts";
+import { findUsersByAuthUID } from "../src/lib/user-identity.ts";
+
+test("Google authUID resolves exactly one application profile", () => {
+  const metadata = {
+    cloud: { authUID: "google-cloud-uid" },
+    stone: { authUID: "google-stone-uid" },
+  };
+
+  assert.deepEqual(
+    findUsersByAuthUID("google-stone-uid", metadata),
+    ["stone"],
+  );
+  assert.deepEqual(findUsersByAuthUID("unknown-uid", metadata), []);
+});
+
+test("duplicate authUID bindings are surfaced instead of guessed", () => {
+  assert.deepEqual(
+    findUsersByAuthUID("duplicate-uid", {
+      cloud: { authUID: "duplicate-uid" },
+      stone: { authUID: "duplicate-uid" },
+    }),
+    ["cloud", "stone"],
+  );
+});
 
 test("recent history includes exactly seven days and excludes older records", () => {
   const now = Date.parse("2026-08-03T00:00:00Z");
