@@ -5,7 +5,11 @@ import {
   checkInActions,
   type CheckInActionId,
 } from "./lib/action-catalog";
-import { ensureAnonymousAuth } from "./lib/auth";
+import {
+  restoreGoogleAuth,
+  signInWithGoogle,
+  signOutGoogle,
+} from "./lib/auth";
 import { prepareCheckIn } from "./lib/check-in-write";
 import {
   clearCurrentUserFromUrl,
@@ -144,6 +148,7 @@ function App() {
   const [diagnostics, setDiagnostics] =
     useState<LogReadDiagnostics | null>(null);
   const [uid, setUid] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
   const [timeZoneSync, setTimeZoneSync] =
     useState<UserTimeZoneSyncResult | null>(null);
   const [checkInGoals, setCheckInGoals] = useState<CheckInGoals>(() =>
@@ -216,12 +221,20 @@ function App() {
         setLogs([]);
         setDiagnostics(null);
 
-        const user = await ensureAnonymousAuth();
-        console.log("anonymous auth succeeded", user.isAnonymous);
+        const user = await restoreGoogleAuth();
+        if (!user) {
+          setUid("");
+          setAuthEmail("");
+          setStatus("請使用 Google 登入");
+          return;
+        }
+
+        console.log("Google auth succeeded", !user.isAnonymous);
         console.log("current UID", user.uid);
 
         if (!isActive) return;
         setUid(user.uid);
+        setAuthEmail(user.email ?? "");
         if (!currentUser) {
           setStatus("請先選擇使用者");
           return;
@@ -441,6 +454,30 @@ function App() {
     }
   };
 
+  const loginWithGoogle = async () => {
+    if (checkInSaving) return;
+
+    setError("");
+    setStatus("正在開啟 Google 登入…");
+    try {
+      await signInWithGoogle();
+    } catch (caughtError) {
+      setStatus("請使用 Google 登入");
+      setError(
+        caughtError instanceof Error ? caughtError.message : "Google 登入失敗",
+      );
+    }
+  };
+
+  const switchIdentity = async () => {
+    await signOutGoogle();
+    clearCurrentUserFromUrl();
+    setCurrentUser(null);
+    setUid("");
+    setAuthEmail("");
+    setProfileMenuOpen(false);
+  };
+
   const chooseAction = (actionId: CheckInActionId) => {
     setSelectedAction(actionId);
     setCheckInNote("");
@@ -528,11 +565,7 @@ function App() {
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={() => {
-                    clearCurrentUserFromUrl();
-                    setCurrentUser(null);
-                    setProfileMenuOpen(false);
-                  }}
+                  onClick={() => void switchIdentity()}
                 >
                   <span aria-hidden="true">⇄</span>
                   切換身分
@@ -588,6 +621,24 @@ function App() {
           </section>
 
           {error && <div className="error-banner" role="alert">{error}</div>}
+
+          {!uid && (
+            <section className="google-login-card" aria-labelledby="google-login-title">
+              <div className="google-login-mark" aria-hidden="true">G</div>
+              <div>
+                <p className="eyebrow">Secure sign-in</p>
+                <h2 id="google-login-title">登入後開始記錄</h2>
+                <p>已選擇 {profiles[currentUser].name}，請使用對應的 Google 帳號登入。</p>
+              </div>
+              <button
+                className="google-login-button"
+                type="button"
+                onClick={() => void loginWithGoogle()}
+              >
+                使用 Google 登入
+              </button>
+            </section>
+          )}
 
           {actionProgress && (
             <section className="section progress-section" aria-labelledby="progress-title">
@@ -675,6 +726,7 @@ function App() {
                   type="button"
                   className={selectedAction === action.id ? "is-selected" : ""}
                   onClick={() => chooseAction(action.id)}
+                  disabled={!uid}
                 >
                   <span aria-hidden="true">{action.icon}</span>
                   <small>{action.label}</small>
@@ -945,7 +997,11 @@ function App() {
             ) : (
               <div className="empty-state">
                 <span>✦</span>
-                <p>{diagnostics ? "最近七天還沒有紀錄" : "正在載入紀錄…"}</p>
+                <p>{!uid
+                  ? "登入後載入紀錄"
+                  : diagnostics
+                    ? "最近七天還沒有紀錄"
+                    : "正在載入紀錄…"}</p>
               </div>
             )}
 
@@ -996,7 +1052,8 @@ function App() {
           <details className="diagnostics">
             <summary>連線診斷</summary>
             <dl>
-              <div><dt>匿名登入</dt><dd>{uid ? "成功" : "等待中"}</dd></div>
+              <div><dt>Google 登入</dt><dd>{uid ? "成功" : "等待中"}</dd></div>
+              <div><dt>登入 Email</dt><dd>{authEmail || "—"}</dd></div>
               <div><dt>目前 UID</dt><dd>{uid || "—"}</dd></div>
               <div><dt>projectId</dt><dd>{diagnostics?.projectId ?? "—"}</dd></div>
               <div><dt>database</dt><dd>{diagnostics?.databaseId ?? "—"}</dd></div>
