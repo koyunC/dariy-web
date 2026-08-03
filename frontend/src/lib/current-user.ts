@@ -16,3 +16,9 @@ export function setCurrentUserInUrl(user: CurrentUser): void {
   url.searchParams.set("user", user);
   window.history.replaceState({}, "", url);
 }
+
+export function clearCurrentUserFromUrl(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("user");
+  window.history.replaceState({}, "", url);
+}

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import "./App.css";
+import { checkInActions } from "./lib/action-catalog";
 import { ensureAnonymousAuth } from "./lib/auth";
 import {
+  clearCurrentUserFromUrl,
   getCurrentUserFromUrl,
   setCurrentUserInUrl,
   type CurrentUser,
@@ -29,23 +31,20 @@ import {
   syncUserTimeZone,
   type UserTimeZoneSyncResult,
 } from "./lib/user-metadata";
+import {
+  defaultCheckInGoals,
+  normalizeCheckInGoals,
+  type CheckInGoals,
+} from "./lib/preference-rules";
+import {
+  getUserCheckInGoals,
+  saveUserCheckInGoals,
+} from "./lib/user-preferences";
 
 const profiles: Record<CurrentUser, { name: string; symbol: string; greeting: string }> = {
   cloud: { name: "可雲", symbol: "☁️", greeting: "雲朵今天也有好好生活嗎？" },
   stone: { name: "阿寶", symbol: "🪨", greeting: "石頭今天想留下什麼？" },
 };
-
-const actions = [
-  { id: "miss_you", icon: "💌", label: "想你" },
-  { id: "early_up", icon: "☀️", label: "早起" },
-  { id: "early_sleep", icon: "🌙", label: "早睡" },
-  { id: "exercise", icon: "💪", label: "運動" },
-  { id: "study", icon: "📚", label: "認真" },
-  { id: "cook", icon: "🍳", label: "煮飯" },
-  { id: "weight", icon: "⚖️", label: "體重" },
-  { id: "snap", icon: "💤", label: "小休" },
-  { id: "snack", icon: "🍜", label: "宵夜" },
-] as const;
 
 type HistoryFilter = "all" | CurrentUser;
 type ProgressPeriod = "week" | "month" | "custom";
@@ -58,20 +57,43 @@ type ProgressCardProps = {
 
 function ProgressCard({ icon, label, progress }: ProgressCardProps) {
   const percentage = Math.round(progress.percentage * 100);
+  const layers = Array.from(
+    { length: Math.ceil(progress.percentage) },
+    (_, index) => Math.min(
+      100,
+      Math.max(0, progress.percentage * 100 - index * 100),
+    ),
+  );
 
   return (
     <article
       className="progress-card"
-      aria-label={`${label}：打卡 ${progress.checkedInDays} 天，共 ${progress.totalDays} 天，達成率 ${percentage}%`}
+      aria-label={`${label}：完成 ${progress.completedCount} 次，累計目標 ${progress.targetCount} 次，達成率 ${percentage}%`}
     >
-      <div
-        className="progress-icon"
-        style={{ "--progress": `${percentage}%` } as CSSProperties}
-        aria-hidden="true"
-      >
+      <div className="progress-icon" aria-hidden="true">
+        <svg viewBox="0 0 100 100">
+          <circle
+            className="progress-ring-track"
+            cx="50"
+            cy="50"
+            r="43"
+            pathLength="100"
+          />
+          {layers.map((layerProgress, index) => (
+            <circle
+              key={index}
+              className={`progress-ring-layer progress-ring-layer-${index % 4}`}
+              cx="50"
+              cy="50"
+              r="43"
+              pathLength="100"
+              strokeDasharray={`${layerProgress} 100`}
+            />
+          ))}
+        </svg>
         <span>{icon}</span>
       </div>
-      <strong>{progress.checkedInDays}/{progress.totalDays}</strong>
+      <strong>{progress.completedCount}/{progress.targetCount}</strong>
     </article>
   );
 }
@@ -90,7 +112,7 @@ function getLogTimestamp(log: TimeCapsuleLog): number {
 }
 
 function getActionIcon(actionId: string): string {
-  return actions.find((action) => action.id === actionId)?.icon ?? "✦";
+  return checkInActions.find((action) => action.id === actionId)?.icon ?? "✦";
 }
 
 function getSavedWeightUnit(user: CurrentUser): WeightUnit {
@@ -116,6 +138,16 @@ function App() {
   const [uid, setUid] = useState("");
   const [timeZoneSync, setTimeZoneSync] =
     useState<UserTimeZoneSyncResult | null>(null);
+  const [checkInGoals, setCheckInGoals] = useState<CheckInGoals>(() =>
+    normalizeCheckInGoals(defaultCheckInGoals),
+  );
+  const [draftCheckInGoals, setDraftCheckInGoals] = useState<CheckInGoals>(() =>
+    normalizeCheckInGoals(defaultCheckInGoals),
+  );
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [preferencesSaving, setPreferencesSaving] = useState(false);
+  const [preferencesError, setPreferencesError] = useState("");
   const [status, setStatus] = useState("正在連接兩人的時光…");
   const [error, setError] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
@@ -163,6 +195,7 @@ function App() {
       try {
         setError("");
         setTimeZoneSync(null);
+        setCheckInGoals(normalizeCheckInGoals(defaultCheckInGoals));
         setLogs([]);
         setDiagnostics(null);
 
@@ -193,10 +226,14 @@ function App() {
         );
         setStatus("正在翻閱過去的紀錄…");
 
-        const result = await getTimeCapsuleLogs();
+        const [result, storedCheckInGoals] = await Promise.all([
+          getTimeCapsuleLogs(),
+          getUserCheckInGoals(currentUser),
+        ]);
         if (!isActive) return;
 
         setLogs(result.logs);
+        setCheckInGoals(storedCheckInGoals);
         setDiagnostics(result.diagnostics);
         setStatus(`已載入 ${result.diagnostics.retainedCount} 則共同回憶`);
       } catch (caughtError) {
@@ -258,7 +295,7 @@ function App() {
       custom: customRange,
     };
 
-    return actions.map((action) => ({
+    return checkInActions.map((action) => ({
       ...action,
       progress: calculateCheckInProgress(
         logs,
@@ -266,6 +303,8 @@ function App() {
         ranges[progressPeriod],
         action.id,
         timeZone,
+        checkInGoals[action.id].targetCount,
+        checkInGoals[action.id].periodDays,
       ),
     }));
   }, [
@@ -273,6 +312,7 @@ function App() {
     customRange,
     historyReferenceTime,
     logs,
+    checkInGoals,
     progressPeriod,
     timeZoneSync,
   ]);
@@ -281,6 +321,61 @@ function App() {
     setCurrentUserInUrl(user);
     setCurrentUser(user);
     setHistoryFilter("all");
+    setProfileMenuOpen(false);
+  };
+
+  const openPreferences = () => {
+    setDraftCheckInGoals(normalizeCheckInGoals(checkInGoals));
+    setPreferencesError("");
+    setProfileMenuOpen(false);
+    setPreferencesOpen(true);
+  };
+
+  const changeDraftTargetCount = (
+    actionId: keyof CheckInGoals,
+    difference: number,
+  ) => {
+    setDraftCheckInGoals((goals) => ({
+      ...goals,
+      [actionId]: {
+        ...goals[actionId],
+        targetCount: Math.min(
+          10,
+          Math.max(1, goals[actionId].targetCount + difference),
+        ),
+      },
+    }));
+  };
+
+  const changeDraftPeriod = (
+    actionId: keyof CheckInGoals,
+    periodDays: number,
+  ) => {
+    setDraftCheckInGoals((goals) => ({
+      ...goals,
+      [actionId]: { ...goals[actionId], periodDays },
+    }));
+  };
+
+  const savePreferences = async () => {
+    if (!currentUser || preferencesSaving) return;
+
+    setPreferencesSaving(true);
+    setPreferencesError("");
+    try {
+      const savedGoals = await saveUserCheckInGoals(
+        currentUser,
+        draftCheckInGoals,
+      );
+      setCheckInGoals(savedGoals);
+      setPreferencesOpen(false);
+    } catch (caughtError) {
+      setPreferencesError(
+        caughtError instanceof Error ? caughtError.message : "偏好儲存失敗",
+      );
+    } finally {
+      setPreferencesSaving(false);
+    }
   };
 
   const chooseWeightUnit = (unit: WeightUnit) => {
@@ -309,15 +404,39 @@ function App() {
           <span>Parallel Time</span>
         </a>
         {currentUser && (
-          <button
-            className="profile-button"
-            type="button"
-            onClick={() => setCurrentUser(null)}
-            aria-label="切換使用者"
-          >
-            <span aria-hidden="true">{profiles[currentUser].symbol}</span>
-            {profiles[currentUser].name}
-          </button>
+          <div className="profile-menu-wrap">
+            <button
+              className="profile-button"
+              type="button"
+              onClick={() => setProfileMenuOpen((open) => !open)}
+              aria-expanded={profileMenuOpen}
+              aria-haspopup="menu"
+            >
+              <span aria-hidden="true">{profiles[currentUser].symbol}</span>
+              {profiles[currentUser].name}
+              <span aria-hidden="true">⌄</span>
+            </button>
+            {profileMenuOpen && (
+              <div className="profile-menu" role="menu">
+                <button type="button" role="menuitem" onClick={openPreferences}>
+                  <span aria-hidden="true">⚙️</span>
+                  偏好設定
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    clearCurrentUserFromUrl();
+                    setCurrentUser(null);
+                    setProfileMenuOpen(false);
+                  }}
+                >
+                  <span aria-hidden="true">⇄</span>
+                  切換身分
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </header>
 
@@ -447,7 +566,7 @@ function App() {
               <span className="preview-tag">介面預覽</span>
             </div>
             <div className="action-grid">
-              {actions.map((action) => (
+              {checkInActions.map((action) => (
                 <button
                   key={action.id}
                   type="button"
@@ -462,7 +581,7 @@ function App() {
             {selectedAction && (
               <div className="composer-preview" role="status">
                 <span>{getActionIcon(selectedAction)}</span>
-                <p><strong>{actions.find((item) => item.id === selectedAction)?.label}</strong><br />寫入功能會在下一階段接上 Firestore。</p>
+                <p><strong>{checkInActions.find((item) => item.id === selectedAction)?.label}</strong><br />寫入功能會在下一階段接上 Firestore。</p>
                 <button type="button" onClick={() => setSelectedAction(null)}>關閉</button>
               </div>
             )}
@@ -569,6 +688,92 @@ function App() {
             </dl>
           </details>
         </main>
+      )}
+
+      {currentUser && preferencesOpen && (
+        <div className="preferences-backdrop" role="presentation">
+          <section
+            className="preferences-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="preferences-title"
+          >
+            <div className="preferences-heading">
+              <div>
+                <p className="eyebrow">{profiles[currentUser].name}</p>
+                <h2 id="preferences-title">打卡頻率目標</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreferencesOpen(false)}
+                aria-label="關閉偏好設定"
+              >
+                ×
+              </button>
+            </div>
+            <div className="target-list">
+              {checkInActions.map((action) => (
+                <div className="target-row" key={action.id}>
+                  <span className="target-action">
+                    <span aria-hidden="true">{action.icon}</span>
+                    <strong>{action.label}</strong>
+                  </span>
+                  <span className="goal-controls">
+                    <span className="target-stepper">
+                      <button
+                        type="button"
+                        onClick={() => changeDraftTargetCount(action.id, -1)}
+                        disabled={draftCheckInGoals[action.id].targetCount <= 1}
+                        aria-label={`減少${action.label}目標次數`}
+                      >
+                        −
+                      </button>
+                      <output aria-label={`${action.label}目標次數`}>
+                        {draftCheckInGoals[action.id].targetCount}
+                      </output>
+                      <button
+                        type="button"
+                        onClick={() => changeDraftTargetCount(action.id, 1)}
+                        disabled={draftCheckInGoals[action.id].targetCount >= 10}
+                        aria-label={`增加${action.label}目標次數`}
+                      >
+                        ＋
+                      </button>
+                    </span>
+                    <span className="goal-separator">次／</span>
+                    <label className="period-select">
+                      <select
+                        value={draftCheckInGoals[action.id].periodDays}
+                        onChange={(event) =>
+                          changeDraftPeriod(action.id, Number(event.target.value))
+                        }
+                        aria-label={`${action.label}目標週期`}
+                      >
+                        {[1, 2, 3, 7, 14, 30].map((days) => (
+                          <option key={days} value={days}>{days}</option>
+                        ))}
+                      </select>
+                      <span>天</span>
+                    </label>
+                  </span>
+                </div>
+              ))}
+            </div>
+            {preferencesError && (
+              <p className="preferences-error" role="alert">
+                {preferencesError}
+              </p>
+            )}
+            <button
+              className="save-preferences"
+              type="button"
+              onClick={() => void savePreferences()}
+              disabled={preferencesSaving}
+            >
+              {preferencesSaving ? "儲存中…" : "儲存偏好"}
+            </button>
+          </section>
+        </div>
       )}
 
       <footer>Made for Cloud &amp; Stone <span aria-hidden="true">♥</span></footer>
