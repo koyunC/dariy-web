@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import "./App.css";
 import { ensureAnonymousAuth } from "./lib/auth";
@@ -13,6 +13,11 @@ import {
   type TimeCapsuleLog,
 } from "./lib/logs";
 import { isWithinRecentHistory } from "./lib/history";
+import {
+  calculateCheckInProgress,
+  getRollingDateRange,
+  type CheckInProgress,
+} from "./lib/check-in-stats";
 import {
   formatTimestampForUser,
   formatWeightContent,
@@ -38,6 +43,33 @@ const actions = [
 ] as const;
 
 type HistoryFilter = "all" | CurrentUser;
+type ProgressPeriod = "week" | "month" | "custom";
+
+type ProgressCardProps = {
+  icon: string;
+  label: string;
+  progress: CheckInProgress;
+};
+
+function ProgressCard({ icon, label, progress }: ProgressCardProps) {
+  const percentage = Math.round(progress.percentage * 100);
+
+  return (
+    <article
+      className="progress-card"
+      aria-label={`${label}：打卡 ${progress.checkedInDays} 天，共 ${progress.totalDays} 天，達成率 ${percentage}%`}
+    >
+      <div
+        className="progress-icon"
+        style={{ "--progress": `${percentage}%` } as CSSProperties}
+        aria-hidden="true"
+      >
+        <span>{icon}</span>
+      </div>
+      <strong>{progress.checkedInDays}/{progress.totalDays}</strong>
+    </article>
+  );
+}
 
 function formatToday(user: CurrentUser): string {
   return new Intl.DateTimeFormat("zh-TW", {
@@ -84,6 +116,15 @@ function App() {
   const [historyReferenceTime, setHistoryReferenceTime] = useState(() =>
     Date.now(),
   );
+  const [customRange, setCustomRange] = useState(() =>
+    getRollingDateRange(
+      historyReferenceTime,
+      14,
+      userDataConventions[currentUser ?? "stone"].timeZone,
+    ),
+  );
+  const [progressPeriod, setProgressPeriod] =
+    useState<ProgressPeriod>("week");
   const [weightUnitPreferences, setWeightUnitPreferences] = useState<
     Record<CurrentUser, WeightUnit>
   >(() => ({
@@ -164,6 +205,38 @@ function App() {
       ),
     [historyFilter, recentLogs],
   );
+
+  const actionProgress = useMemo(() => {
+    if (!currentUser) return null;
+
+    const timeZone = userDataConventions[currentUser].timeZone;
+    const weekRange = getRollingDateRange(
+      historyReferenceTime,
+      7,
+      timeZone,
+    );
+    const monthRange = getRollingDateRange(
+      historyReferenceTime,
+      30,
+      timeZone,
+    );
+
+    const ranges = {
+      week: weekRange,
+      month: monthRange,
+      custom: customRange,
+    };
+
+    return actions.map((action) => ({
+      ...action,
+      progress: calculateCheckInProgress(
+        logs,
+        currentUser,
+        ranges[progressPeriod],
+        action.id,
+      ),
+    }));
+  }, [currentUser, customRange, historyReferenceTime, logs, progressPeriod]);
 
   const chooseUser = (user: CurrentUser) => {
     setCurrentUserInUrl(user);
@@ -250,6 +323,77 @@ function App() {
           </section>
 
           {error && <div className="error-banner" role="alert">{error}</div>}
+
+          {actionProgress && (
+            <section className="section progress-section" aria-labelledby="progress-title">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Check-in progress</p>
+                  <h2 id="progress-title">打卡達成率</h2>
+                </div>
+              </div>
+              <div className="progress-period-tabs" aria-label="統計時間範圍">
+                {([
+                  ["week", "過去一週"],
+                  ["month", "一個月"],
+                  ["custom", "自訂區間"],
+                ] as const).map(([period, label]) => (
+                  <button
+                    key={period}
+                    type="button"
+                    className={progressPeriod === period ? "is-active" : ""}
+                    onClick={() => setProgressPeriod(period)}
+                    aria-pressed={progressPeriod === period}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="progress-grid">
+                {actionProgress.map((action) => (
+                  <ProgressCard
+                    key={action.id}
+                    icon={action.icon}
+                    label={action.label}
+                    progress={action.progress}
+                  />
+                ))}
+              </div>
+              {progressPeriod === "custom" && (
+                <div className="custom-range" aria-label="自訂統計區間">
+                  <label>
+                    <span>開始</span>
+                    <input
+                      type="date"
+                      value={customRange.start}
+                      max={customRange.end}
+                      onChange={(event) =>
+                        setCustomRange((range) => ({
+                          ...range,
+                          start: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <span aria-hidden="true">—</span>
+                  <label>
+                    <span>結束</span>
+                    <input
+                      type="date"
+                      value={customRange.end}
+                      min={customRange.start}
+                      onChange={(event) =>
+                        setCustomRange((range) => ({
+                          ...range,
+                          end: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+              )}
+            </section>
+          )}
 
           <section className="section quick-section" aria-labelledby="quick-title">
             <div className="section-heading">

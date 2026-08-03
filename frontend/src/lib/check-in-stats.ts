@@ -1,0 +1,109 @@
+import type { CurrentUser } from "./current-user";
+import type { TimeCapsuleLog } from "./logs";
+import { userDataConventions } from "./user-data.ts";
+
+export type DateRange = {
+  start: string;
+  end: string;
+};
+
+export type CheckInProgress = DateRange & {
+  checkedInDays: number;
+  totalDays: number;
+  percentage: number;
+};
+
+const dateKeyFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getDateKeyFormatter(timeZone: string): Intl.DateTimeFormat {
+  const existing = dateKeyFormatterCache.get(timeZone);
+  if (existing) return existing;
+
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  dateKeyFormatterCache.set(timeZone, formatter);
+  return formatter;
+}
+
+export function getDateKey(milliseconds: number, timeZone: string): string {
+  const parts = getDateKeyFormatter(timeZone).formatToParts(
+    new Date(milliseconds),
+  );
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function shiftDateKey(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
+export function getRollingDateRange(
+  referenceMilliseconds: number,
+  days: number,
+  timeZone: string,
+): DateRange {
+  const end = getDateKey(referenceMilliseconds, timeZone);
+  return {
+    start: shiftDateKey(end, -(days - 1)),
+    end,
+  };
+}
+
+function countInclusiveDays(start: string, end: string): number {
+  const startMilliseconds = Date.parse(`${start}T00:00:00Z`);
+  const endMilliseconds = Date.parse(`${end}T00:00:00Z`);
+  if (
+    Number.isNaN(startMilliseconds) ||
+    Number.isNaN(endMilliseconds) ||
+    startMilliseconds > endMilliseconds
+  ) {
+    return 0;
+  }
+
+  return Math.round(
+    (endMilliseconds - startMilliseconds) / (24 * 60 * 60 * 1_000),
+  ) + 1;
+}
+
+export function calculateCheckInProgress(
+  logs: TimeCapsuleLog[],
+  user: CurrentUser,
+  range: DateRange,
+  actionId: string,
+): CheckInProgress {
+  const totalDays = countInclusiveDays(range.start, range.end);
+  if (totalDays === 0) {
+    return { ...range, checkedInDays: 0, totalDays: 0, percentage: 0 };
+  }
+
+  const timeZone = userDataConventions[user].timeZone;
+  const checkedInDateKeys = new Set<string>();
+
+  logs.forEach((log) => {
+    if (log.user !== user || log.actionId !== actionId) return;
+
+    const timestamp = log.timeMilliseconds ?? log.createdAt;
+    if (timestamp === null || !Number.isFinite(timestamp)) return;
+
+    const dateKey = getDateKey(timestamp, timeZone);
+    if (dateKey >= range.start && dateKey <= range.end) {
+      checkedInDateKeys.add(dateKey);
+    }
+  });
+
+  const checkedInDays = checkedInDateKeys.size;
+  return {
+    ...range,
+    checkedInDays,
+    totalDays,
+    percentage: checkedInDays / totalDays,
+  };
+}
