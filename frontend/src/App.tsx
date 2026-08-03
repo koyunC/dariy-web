@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import "./App.css";
-import { checkInActions } from "./lib/action-catalog";
+import {
+  checkInActions,
+  type CheckInActionId,
+} from "./lib/action-catalog";
 import { ensureAnonymousAuth } from "./lib/auth";
+import { prepareCheckIn } from "./lib/check-in-write";
 import {
   clearCurrentUserFromUrl,
   getCurrentUserFromUrl,
@@ -10,6 +14,7 @@ import {
   type CurrentUser,
 } from "./lib/current-user";
 import {
+  createTimeCapsuleLog,
   getTimeCapsuleLogs,
   type LogReadDiagnostics,
   type TimeCapsuleLog,
@@ -154,6 +159,11 @@ function App() {
   const [status, setStatus] = useState("正在連接兩人的時光…");
   const [error, setError] = useState("");
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
+  const [checkInNote, setCheckInNote] = useState("");
+  const [weightValue, setWeightValue] = useState("");
+  const [checkInSaving, setCheckInSaving] = useState(false);
+  const [checkInMessage, setCheckInMessage] = useState("");
+  const [checkInError, setCheckInError] = useState("");
   const [selectedTimelineLog, setSelectedTimelineLog] =
     useState<TimeCapsuleLog | null>(null);
   const [selectedTimelineDayKey, setSelectedTimelineDayKey] =
@@ -431,6 +441,64 @@ function App() {
     }
   };
 
+  const chooseAction = (actionId: CheckInActionId) => {
+    setSelectedAction(actionId);
+    setCheckInNote("");
+    setWeightValue("");
+    setCheckInMessage("");
+    setCheckInError("");
+  };
+
+  const submitCheckIn = async () => {
+    if (
+      !currentUser
+      || !timeZoneSync
+      || !selectedAction
+      || checkInSaving
+    ) return;
+
+    setCheckInSaving(true);
+    setCheckInError("");
+    setCheckInMessage("");
+
+    try {
+      const actionId = selectedAction as CheckInActionId;
+      const prepared = prepareCheckIn({
+        actionId,
+        note: checkInNote,
+        weightValue,
+        weightUnit: userDataConventions[currentUser].weightUnit,
+      });
+
+      const createdLog = await createTimeCapsuleLog({
+        ...prepared,
+        user: currentUser,
+        timeZone: timeZoneSync.effectiveTimeZone,
+      });
+
+      setLogs((currentLogs) => [createdLog, ...currentLogs]);
+      setDiagnostics((currentDiagnostics) => currentDiagnostics
+        ? {
+            ...currentDiagnostics,
+            snapshotSize: currentDiagnostics.snapshotSize + 1,
+            retainedCount: currentDiagnostics.retainedCount + 1,
+          }
+        : currentDiagnostics);
+      setHistoryReferenceTime(Date.now());
+      setSelectedAction(null);
+      setCheckInNote("");
+      setWeightValue("");
+      setCheckInMessage(`${getActionIcon(actionId)} 打卡成功`);
+      setStatus("新回憶已同步");
+    } catch (caughtError) {
+      setCheckInError(
+        caughtError instanceof Error ? caughtError.message : "打卡失敗",
+      );
+    } finally {
+      setCheckInSaving(false);
+    }
+  };
+
   return (
     <div className={`app-shell theme-${currentUser ?? "shared"}`}>
       <header className="topbar">
@@ -598,7 +666,7 @@ function App() {
                 <p className="eyebrow">Quick check-in</p>
                 <h2 id="quick-title">現在想記下什麼？</h2>
               </div>
-              <span className="preview-tag">介面預覽</span>
+              <span className="preview-tag">即時同步</span>
             </div>
             <div className="action-grid">
               {checkInActions.map((action) => (
@@ -606,7 +674,7 @@ function App() {
                   key={action.id}
                   type="button"
                   className={selectedAction === action.id ? "is-selected" : ""}
-                  onClick={() => setSelectedAction(action.id)}
+                  onClick={() => chooseAction(action.id)}
                 >
                   <span aria-hidden="true">{action.icon}</span>
                   <small>{action.label}</small>
@@ -614,11 +682,74 @@ function App() {
               ))}
             </div>
             {selectedAction && (
-              <div className="composer-preview" role="status">
-                <span>{getActionIcon(selectedAction)}</span>
-                <p><strong>{checkInActions.find((item) => item.id === selectedAction)?.label}</strong><br />寫入功能會在下一階段接上 Firestore。</p>
-                <button type="button" onClick={() => setSelectedAction(null)}>關閉</button>
-              </div>
+              <form
+                className="check-in-composer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitCheckIn();
+                }}
+              >
+                <div className="check-in-composer-heading">
+                  <span aria-hidden="true">{getActionIcon(selectedAction)}</span>
+                  <strong>
+                    {checkInActions.find((item) => item.id === selectedAction)?.label}
+                  </strong>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAction(null)}
+                    aria-label="關閉打卡表單"
+                  >
+                    ×
+                  </button>
+                </div>
+                {selectedAction === "weight" ? (
+                  <label className="check-in-field weight-field">
+                    <span>體重</span>
+                    <span className="weight-input-wrap">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0.1"
+                        step="0.1"
+                        value={weightValue}
+                        onChange={(event) => setWeightValue(event.target.value)}
+                        placeholder={currentUser === "cloud" ? "例如 140.0" : "例如 63.5"}
+                        autoFocus
+                        required
+                      />
+                      <strong>{userDataConventions[currentUser].weightUnit}</strong>
+                    </span>
+                  </label>
+                ) : (
+                  <label className="check-in-field">
+                    <span>備註（選填）</span>
+                    <textarea
+                      value={checkInNote}
+                      onChange={(event) => setCheckInNote(event.target.value)}
+                      maxLength={200}
+                      rows={3}
+                      placeholder="想留下什麼？"
+                      autoFocus
+                    />
+                  </label>
+                )}
+                <p className="check-in-time-zone">
+                  將以 {getTimeZoneLabel(timeZoneSync?.effectiveTimeZone ?? userDataConventions[currentUser].timeZone)} 記錄
+                </p>
+                {checkInError && (
+                  <p className="check-in-error" role="alert">{checkInError}</p>
+                )}
+                <button
+                  className="submit-check-in"
+                  type="submit"
+                  disabled={checkInSaving || !timeZoneSync || !uid}
+                >
+                  {checkInSaving ? "寫入中…" : "完成打卡"}
+                </button>
+              </form>
+            )}
+            {checkInMessage && (
+              <p className="check-in-success" role="status">{checkInMessage}</p>
             )}
           </section>
 
