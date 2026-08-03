@@ -8,6 +8,7 @@ import {
 import { db, firestoreDatabaseId } from "./firebase";
 import {
   getUserDataConvention,
+  isValidTimeZone,
   type WeightUnit,
 } from "./user-data";
 
@@ -21,6 +22,7 @@ export type TimeCapsuleLog = {
   updatedAt: string | null;
   user: string;
   sourceWeightUnit: WeightUnit | null;
+  recordedTimeZone: string | null;
   isLegacy: boolean;
   issues: string[];
   raw: DocumentData;
@@ -123,6 +125,18 @@ function parseUser(value: unknown, issues: string[]): string {
   return user;
 }
 
+function parseRecordedTimeZone(
+  value: unknown,
+  issues: string[],
+): string | null {
+  // Historical records predate this optional field and remain valid.
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string" && isValidTimeZone(value)) return value;
+
+  issues.push(`timeZone has invalid value ${JSON.stringify(value)}`);
+  return null;
+}
+
 function parseDocument(id: string, data: DocumentData): TimeCapsuleLog {
   const issues: string[] = [];
   const user = parseUser(data.user, issues);
@@ -146,6 +160,7 @@ function parseDocument(id: string, data: DocumentData): TimeCapsuleLog {
     updatedAt,
     user,
     sourceWeightUnit: convention?.weightUnit ?? null,
+    recordedTimeZone: parseRecordedTimeZone(data.timeZone, issues),
     isLegacy: issues.length > 0,
     issues,
     raw: data,

@@ -67,6 +67,7 @@ function logAt(
     updatedAt: null,
     user,
     sourceWeightUnit: user === "cloud" ? "lb" : "kg",
+    recordedTimeZone: null,
     isLegacy: false,
     issues: [],
     raw: {},
@@ -84,7 +85,7 @@ test("check-in progress counts distinct days for the selected user", () => {
   const progress = calculateCheckInProgress(logs, "stone", {
     start: "2026-07-28",
     end: "2026-08-03",
-  }, "exercise");
+  }, "exercise", "Asia/Taipei");
 
   assert.equal(progress.checkedInDays, 2);
   assert.equal(progress.totalDays, 7);
@@ -98,7 +99,7 @@ test("check-in days use the recorder's calendar time zone", () => {
     calculateCheckInProgress([sameInstant], "cloud", {
       start: "2026-08-02",
       end: "2026-08-02",
-    }, "exercise").checkedInDays,
+    }, "exercise", "America/New_York").checkedInDays,
     1,
   );
 });
@@ -111,16 +112,52 @@ test("check-in progress is calculated separately for each action", () => {
   const range = { start: "2026-08-01", end: "2026-08-03" };
 
   assert.equal(
-    calculateCheckInProgress(logs, "stone", range, "exercise").checkedInDays,
+    calculateCheckInProgress(
+      logs,
+      "stone",
+      range,
+      "exercise",
+      "Asia/Taipei",
+    ).checkedInDays,
     1,
   );
   assert.equal(
-    calculateCheckInProgress(logs, "stone", range, "early_sleep").checkedInDays,
+    calculateCheckInProgress(
+      logs,
+      "stone",
+      range,
+      "early_sleep",
+      "Asia/Taipei",
+    ).checkedInDays,
     1,
   );
   assert.equal(
-    calculateCheckInProgress(logs, "stone", range, "cook").checkedInDays,
+    calculateCheckInProgress(
+      logs,
+      "stone",
+      range,
+      "cook",
+      "Asia/Taipei",
+    ).checkedInDays,
     0,
+  );
+});
+
+test("a record's captured time zone overrides the current fallback zone", () => {
+  const log = {
+    ...logAt("cloud", "2026-08-03T02:00:00Z"),
+    recordedTimeZone: "Asia/Taipei",
+  };
+
+  assert.equal(
+    calculateCheckInProgress(
+      [log],
+      "cloud",
+      { start: "2026-08-03", end: "2026-08-03" },
+      "exercise",
+      "America/New_York",
+    ).checkedInDays,
+    1,
   );
 });
 

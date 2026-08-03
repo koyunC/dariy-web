@@ -1,6 +1,5 @@
 import type { CurrentUser } from "./current-user";
 import type { TimeCapsuleLog } from "./logs";
-import { userDataConventions } from "./user-data.ts";
 
 export type DateRange = {
   start: string;
@@ -78,13 +77,13 @@ export function calculateCheckInProgress(
   user: CurrentUser,
   range: DateRange,
   actionId: string,
+  fallbackTimeZone: string,
 ): CheckInProgress {
   const totalDays = countInclusiveDays(range.start, range.end);
   if (totalDays === 0) {
     return { ...range, checkedInDays: 0, totalDays: 0, percentage: 0 };
   }
 
-  const timeZone = userDataConventions[user].timeZone;
   const checkedInDateKeys = new Set<string>();
 
   logs.forEach((log) => {
@@ -93,7 +92,10 @@ export function calculateCheckInProgress(
     const timestamp = log.timeMilliseconds ?? log.createdAt;
     if (timestamp === null || !Number.isFinite(timestamp)) return;
 
-    const dateKey = getDateKey(timestamp, timeZone);
+    const dateKey = getDateKey(
+      timestamp,
+      log.recordedTimeZone ?? fallbackTimeZone,
+    );
     if (dateKey >= range.start && dateKey <= range.end) {
       checkedInDateKeys.add(dateKey);
     }

@@ -19,11 +19,16 @@ import {
   type CheckInProgress,
 } from "./lib/check-in-stats";
 import {
-  formatTimestampForUser,
+  formatTimestampInTimeZone,
   formatWeightContent,
+  getTimeZoneLabel,
   userDataConventions,
   type WeightUnit,
 } from "./lib/user-data";
+import {
+  syncUserTimeZone,
+  type UserTimeZoneSyncResult,
+} from "./lib/user-metadata";
 
 const profiles: Record<CurrentUser, { name: string; symbol: string; greeting: string }> = {
   cloud: { name: "可雲", symbol: "☁️", greeting: "雲朵今天也有好好生活嗎？" },
@@ -71,9 +76,9 @@ function ProgressCard({ icon, label, progress }: ProgressCardProps) {
   );
 }
 
-function formatToday(user: CurrentUser): string {
+function formatToday(timeZone: string): string {
   return new Intl.DateTimeFormat("zh-TW", {
-    timeZone: userDataConventions[user].timeZone,
+    timeZone,
     month: "long",
     day: "numeric",
     weekday: "long",
@@ -109,6 +114,8 @@ function App() {
   const [diagnostics, setDiagnostics] =
     useState<LogReadDiagnostics | null>(null);
   const [uid, setUid] = useState("");
+  const [timeZoneSync, setTimeZoneSync] =
+    useState<UserTimeZoneSyncResult | null>(null);
   const [status, setStatus] = useState("正在連接兩人的時光…");
   const [error, setError] = useState("");
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
@@ -154,12 +161,36 @@ function App() {
 
     async function initialize() {
       try {
+        setError("");
+        setTimeZoneSync(null);
+        setLogs([]);
+        setDiagnostics(null);
+
         const user = await ensureAnonymousAuth();
         console.log("anonymous auth succeeded", user.isAnonymous);
         console.log("current UID", user.uid);
 
         if (!isActive) return;
         setUid(user.uid);
+        if (!currentUser) {
+          setStatus("請先選擇使用者");
+          return;
+        }
+
+        setStatus("正在同步目前時區…");
+        const syncedTimeZone = await syncUserTimeZone(currentUser);
+        if (!isActive) return;
+
+        console.log("detected timeZone", syncedTimeZone.detectedTimeZone);
+        console.log("stored timeZone updated", syncedTimeZone.updated);
+        setTimeZoneSync(syncedTimeZone);
+        setCustomRange(
+          getRollingDateRange(
+            Date.now(),
+            14,
+            syncedTimeZone.effectiveTimeZone,
+          ),
+        );
         setStatus("正在翻閱過去的紀錄…");
 
         const result = await getTimeCapsuleLogs();
@@ -183,7 +214,7 @@ function App() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [currentUser]);
 
   const sortedLogs = useMemo(
     () => [...logs].sort((a, b) => getLogTimestamp(b) - getLogTimestamp(a)),
@@ -207,9 +238,9 @@ function App() {
   );
 
   const actionProgress = useMemo(() => {
-    if (!currentUser) return null;
+    if (!currentUser || !timeZoneSync) return null;
 
-    const timeZone = userDataConventions[currentUser].timeZone;
+    const timeZone = timeZoneSync.effectiveTimeZone;
     const weekRange = getRollingDateRange(
       historyReferenceTime,
       7,
@@ -234,9 +265,17 @@ function App() {
         currentUser,
         ranges[progressPeriod],
         action.id,
+        timeZone,
       ),
     }));
-  }, [currentUser, customRange, historyReferenceTime, logs, progressPeriod]);
+  }, [
+    currentUser,
+    customRange,
+    historyReferenceTime,
+    logs,
+    progressPeriod,
+    timeZoneSync,
+  ]);
 
   const chooseUser = (user: CurrentUser) => {
     setCurrentUserInUrl(user);
@@ -313,7 +352,11 @@ function App() {
         <main className="home-page">
           <section className="welcome-card">
             <div>
-              <p className="eyebrow">{formatToday(currentUser)}</p>
+              <p className="eyebrow">
+                {timeZoneSync
+                  ? formatToday(timeZoneSync.effectiveTimeZone)
+                  : "正在同步時區…"}
+              </p>
               <h1>{profiles[currentUser].greeting}</h1>
               <p className="welcome-status">{status}</p>
             </div>
@@ -447,7 +490,9 @@ function App() {
             </div>
             <div className="display-preferences" aria-label="顯示偏好">
               <span>
-                時間：{userDataConventions[currentUser].timeZoneLabel}
+                時間：{timeZoneSync
+                  ? getTimeZoneLabel(timeZoneSync.effectiveTimeZone)
+                  : "同步中…"}
               </span>
               <div className="unit-toggle" aria-label="體重顯示單位">
                 {(["lb", "kg"] as const).map((unit) => (
@@ -479,11 +524,11 @@ function App() {
                         <div className="log-meta">
                           <strong>{knownUser ? profiles[knownUser].name : log.user}</strong>
                           <time>
-                            {log.timeMilliseconds === null
+                            {log.timeMilliseconds === null || !timeZoneSync
                               ? log.time
-                              : formatTimestampForUser(
+                              : formatTimestampInTimeZone(
                                   log.timeMilliseconds,
-                                  currentUser,
+                                  timeZoneSync.effectiveTimeZone,
                                 )}
                           </time>
                         </div>
@@ -516,6 +561,8 @@ function App() {
               <div><dt>目前 UID</dt><dd>{uid || "—"}</dd></div>
               <div><dt>projectId</dt><dd>{diagnostics?.projectId ?? "—"}</dd></div>
               <div><dt>database</dt><dd>{diagnostics?.databaseId ?? "—"}</dd></div>
+              <div><dt>目前時區</dt><dd>{timeZoneSync?.effectiveTimeZone ?? "—"}</dd></div>
+              <div><dt>metadata 更新</dt><dd>{timeZoneSync ? (timeZoneSync.updated ? "是" : "否") : "—"}</dd></div>
               <div><dt>snapshot.size</dt><dd>{diagnostics?.snapshotSize ?? "—"}</dd></div>
               <div><dt>解析後保留</dt><dd>{diagnostics?.retainedCount ?? "—"}</dd></div>
               <div><dt>略過</dt><dd>{diagnostics?.skippedDocuments.length ?? "—"}</dd></div>
