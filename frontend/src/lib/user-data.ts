@@ -28,12 +28,42 @@ export function getUserDataConvention(
   return userDataConventions[user];
 }
 
-export function formatTimestampForUser(
+export function isValidTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getCurrentTimeZone(): string {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (!timeZone || !isValidTimeZone(timeZone)) {
+    throw new Error("瀏覽器未提供有效的 IANA 時區");
+  }
+  return timeZone;
+}
+
+export function getTimeZoneLabel(timeZone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("zh-TW", {
+      timeZone,
+      timeZoneName: "long",
+    }).formatToParts(new Date());
+    return parts.find((part) => part.type === "timeZoneName")?.value
+      ?? timeZone;
+  } catch {
+    return timeZone;
+  }
+}
+
+export function formatTimestampInTimeZone(
   milliseconds: number,
-  user: CurrentUser,
+  timeZone: string,
 ): string {
   return new Intl.DateTimeFormat("zh-TW", {
-    timeZone: userDataConventions[user].timeZone,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -45,6 +75,16 @@ export function formatTimestampForUser(
   })
     .format(new Date(milliseconds))
     .replace(/\s+/gu, " ");
+}
+
+export function formatTimestampForUser(
+  milliseconds: number,
+  user: CurrentUser,
+): string {
+  return formatTimestampInTimeZone(
+    milliseconds,
+    userDataConventions[user].timeZone,
+  );
 }
 
 function unitFromText(value: string | undefined): WeightUnit | null {
