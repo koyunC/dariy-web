@@ -16,6 +16,20 @@ export type PreparedCheckIn = {
   content: string;
 };
 
+export function extractCheckInContentValue(content: string): string {
+  const separatorIndex = [content.indexOf("："), content.indexOf(":")]
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0];
+
+  return separatorIndex === undefined
+    ? ""
+    : content.slice(separatorIndex + 1).trim();
+}
+
+export function extractWeightValue(content: string): string {
+  return content.match(/-?\d+(?:\.\d+)?/u)?.[0] ?? "";
+}
+
 export function prepareCheckIn(draft: CheckInDraft): PreparedCheckIn {
   const action = checkInActions.find((item) => item.id === draft.actionId);
   if (!action) throw new Error("找不到這個打卡類別");

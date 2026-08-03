@@ -10,7 +10,11 @@ import {
   signInWithGoogle,
   signOutGoogle,
 } from "./lib/auth";
-import { prepareCheckIn } from "./lib/check-in-write";
+import {
+  extractCheckInContentValue,
+  extractWeightValue,
+  prepareCheckIn,
+} from "./lib/check-in-write";
 import {
   clearCurrentUserFromUrl,
   getCurrentUserFromUrl,
@@ -19,9 +23,11 @@ import {
 } from "./lib/current-user";
 import {
   createTimeCapsuleLog,
+  deleteTimeCapsuleLog,
   getTimeCapsuleLogs,
   type LogReadDiagnostics,
   type TimeCapsuleLog,
+  updateTimeCapsuleLog,
 } from "./lib/logs";
 import {
   calculateCheckInProgress,
@@ -128,6 +134,10 @@ function getActionIcon(actionId: string): string {
   return checkInActions.find((action) => action.id === actionId)?.icon ?? "✦";
 }
 
+function isCheckInActionId(value: string): value is CheckInActionId {
+  return checkInActions.some((action) => action.id === value);
+}
+
 function getSavedWeightUnit(user: CurrentUser): WeightUnit {
   try {
     const savedUnit = window.localStorage.getItem(
@@ -173,6 +183,15 @@ function App() {
   const [checkInError, setCheckInError] = useState("");
   const [selectedTimelineLog, setSelectedTimelineLog] =
     useState<TimeCapsuleLog | null>(null);
+  const [editingTimelineLogId, setEditingTimelineLogId] = useState<string | null>(
+    null,
+  );
+  const [editingActionId, setEditingActionId] =
+    useState<CheckInActionId | null>(null);
+  const [editingNote, setEditingNote] = useState("");
+  const [editingWeightValue, setEditingWeightValue] = useState("");
+  const [recordMutationSaving, setRecordMutationSaving] = useState(false);
+  const [recordMutationError, setRecordMutationError] = useState("");
   const [selectedTimelineDayKey, setSelectedTimelineDayKey] =
     useState<string | null>(null);
   const timelineScrollReference = useRef<HTMLDivElement | null>(null);
@@ -395,12 +414,152 @@ function App() {
     timeZoneSync,
   ]);
 
+  const selectedLogIsOwned = Boolean(
+    currentUser
+    && selectedTimelineLog
+    && selectedTimelineLog.user === currentUser,
+  );
+  const selectedLogIsEditing = Boolean(
+    selectedTimelineLog
+    && editingTimelineLogId === selectedTimelineLog.id,
+  );
+
   const chooseUser = (user: CurrentUser) => {
     setCurrentUserInUrl(user);
     setCurrentUser(user);
     setSelectedTimelineLog(null);
+    setEditingTimelineLogId(null);
+    setRecordMutationError("");
     setSelectedTimelineDayKey(null);
     setProfileMenuOpen(false);
+  };
+
+  const selectTimelineLog = (log: TimeCapsuleLog) => {
+    setSelectedTimelineLog(log);
+    setEditingTimelineLogId(null);
+    setRecordMutationError("");
+  };
+
+  const closeTimelineLog = () => {
+    setSelectedTimelineLog(null);
+    setEditingTimelineLogId(null);
+    setRecordMutationError("");
+  };
+
+  const beginEditingSelectedLog = () => {
+    if (!currentUser || !selectedTimelineLog) return;
+    if (selectedTimelineLog.user !== currentUser) {
+      setRecordMutationError("只能編輯自己的紀錄");
+      return;
+    }
+
+    if (!isCheckInActionId(selectedTimelineLog.actionId)) {
+      setRecordMutationError("這筆舊格式紀錄沒有可編輯的打卡類別");
+      return;
+    }
+
+    const contentValue = extractCheckInContentValue(selectedTimelineLog.content);
+    setEditingTimelineLogId(selectedTimelineLog.id);
+    setEditingActionId(selectedTimelineLog.actionId);
+    setEditingNote(contentValue);
+    setEditingWeightValue(
+      selectedTimelineLog.actionId === "weight"
+        ? extractWeightValue(contentValue || selectedTimelineLog.content)
+        : "",
+    );
+    setRecordMutationError("");
+  };
+
+  const cancelEditingSelectedLog = () => {
+    setEditingTimelineLogId(null);
+    setEditingActionId(null);
+    setEditingNote("");
+    setEditingWeightValue("");
+    setRecordMutationError("");
+  };
+
+  const saveEditedLog = async () => {
+    if (
+      !currentUser
+      || !identityReady
+      || !selectedTimelineLog
+      || selectedTimelineLog.user !== currentUser
+      || editingTimelineLogId !== selectedTimelineLog.id
+      || !editingActionId
+      || recordMutationSaving
+    ) return;
+
+    setRecordMutationSaving(true);
+    setRecordMutationError("");
+
+    try {
+      const prepared = prepareCheckIn({
+        actionId: editingActionId,
+        note: editingNote,
+        weightValue: editingWeightValue,
+        weightUnit: userDataConventions[currentUser].weightUnit,
+      });
+      const updatedLog = await updateTimeCapsuleLog(
+        selectedTimelineLog.id,
+        {
+          ...prepared,
+          user: currentUser,
+        },
+      );
+
+      setLogs((currentLogs) => currentLogs.map((log) =>
+        log.id === updatedLog.id ? updatedLog : log,
+      ));
+      setSelectedTimelineLog(updatedLog);
+      cancelEditingSelectedLog();
+      setStatus("紀錄已更新並同步到雲端");
+    } catch (caughtError) {
+      setRecordMutationError(
+        caughtError instanceof Error ? caughtError.message : "紀錄更新失敗",
+      );
+    } finally {
+      setRecordMutationSaving(false);
+    }
+  };
+
+  const deleteSelectedLog = async () => {
+    if (
+      !currentUser
+      || !identityReady
+      || !selectedTimelineLog
+      || selectedTimelineLog.user !== currentUser
+      || recordMutationSaving
+    ) return;
+
+    const confirmed = window.confirm(
+      "確定要刪除這筆紀錄嗎？刪除後無法復原。",
+    );
+    if (!confirmed) return;
+
+    setRecordMutationSaving(true);
+    setRecordMutationError("");
+
+    try {
+      await deleteTimeCapsuleLog(selectedTimelineLog.id, currentUser);
+      setLogs((currentLogs) => currentLogs.filter(
+        (log) => log.id !== selectedTimelineLog.id,
+      ));
+      setDiagnostics((currentDiagnostics) => currentDiagnostics
+        ? {
+            ...currentDiagnostics,
+            snapshotSize: Math.max(0, currentDiagnostics.snapshotSize - 1),
+            retainedCount: Math.max(0, currentDiagnostics.retainedCount - 1),
+          }
+        : currentDiagnostics);
+      closeTimelineLog();
+      setStatus("紀錄已刪除並同步到雲端");
+    } catch (caughtError) {
+      setRecordMutationError(
+        caughtError instanceof Error ? caughtError.message : "紀錄刪除失敗",
+      );
+    } finally {
+      setRecordMutationSaving(false);
+    }
   };
 
   const openPreferences = () => {
@@ -895,7 +1054,7 @@ function App() {
                                       key={log.id}
                                       type="button"
                                       className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
-                                      onClick={() => setSelectedTimelineLog(log)}
+                                      onClick={() => selectTimelineLog(log)}
                                       aria-label={`${profiles[currentUser].name}：${log.content}`}
                                     >
                                       {getActionIcon(log.actionId)}
@@ -908,7 +1067,7 @@ function App() {
                                 type="button"
                                 onClick={() => {
                                   setSelectedTimelineDayKey(day.dateKey);
-                                  setSelectedTimelineLog(null);
+                                  closeTimelineLog();
                                 }}
                                 aria-label={`放大檢視 ${formattedDate.date} ${formattedDate.weekday}`}
                               >
@@ -924,7 +1083,7 @@ function App() {
                                         key={log.id}
                                         type="button"
                                         className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
-                                        onClick={() => setSelectedTimelineLog(log)}
+                                        onClick={() => selectTimelineLog(log)}
                                         aria-label={`${profiles[partner].name}：${log.content}`}
                                       >
                                         {getActionIcon(log.actionId)}
@@ -946,7 +1105,7 @@ function App() {
                         type="button"
                         onClick={() => {
                           setSelectedTimelineDayKey(null);
-                          setSelectedTimelineLog(null);
+                          closeTimelineLog();
                         }}
                       >
                         ← 週檢視
@@ -988,7 +1147,7 @@ function App() {
                                     <button
                                       type="button"
                                       className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
-                                      onClick={() => setSelectedTimelineLog(log)}
+                                      onClick={() => selectTimelineLog(log)}
                                       aria-label={`${profiles[currentUser].name}：${log.content}`}
                                     >
                                       {getActionIcon(log.actionId)}
@@ -1003,7 +1162,7 @@ function App() {
                                     <button
                                       type="button"
                                       className={selectedTimelineLog?.id === log.id ? "is-selected" : ""}
-                                      onClick={() => setSelectedTimelineLog(log)}
+                                      onClick={() => selectTimelineLog(log)}
                                       aria-label={`${log.user === "cloud" ? profiles.cloud.name : profiles.stone.name}：${log.content}`}
                                     >
                                       {getActionIcon(log.actionId)}
@@ -1037,7 +1196,7 @@ function App() {
             )}
 
             {selectedTimelineLog && (
-              <article className="memory-detail">
+              <article className={`memory-detail ${selectedLogIsEditing ? "is-editing" : ""}`}>
                 <div className="timeline-icon" aria-hidden="true">
                   {getActionIcon(selectedTimelineLog.actionId)}
                 </div>
@@ -1054,24 +1213,136 @@ function App() {
                         : formatTimestampInTimeZone(
                             selectedTimelineLog.timeMilliseconds,
                             timeZoneSync.effectiveTimeZone,
-                          )}
+                        )}
                     </time>
                   </div>
-                  <p>
-                    {formatWeightContent(
-                      selectedTimelineLog.content,
-                      selectedTimelineLog.actionId,
-                      selectedTimelineLog.sourceWeightUnit,
-                      displayWeightUnit,
-                    )}
-                  </p>
-                  {selectedTimelineLog.isLegacy && (
-                    <span className="legacy-tag">舊格式資料</span>
+                  {selectedLogIsEditing ? (
+                    <form
+                      className="memory-edit-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void saveEditedLog();
+                      }}
+                    >
+                      <p className="memory-edit-note">
+                        可修改類別與內容；原始打卡時間與記錄時區會保留。
+                      </p>
+                      <label className="check-in-field">
+                        <span>類別</span>
+                        <select
+                          value={editingActionId ?? ""}
+                          onChange={(event) => {
+                            if (isCheckInActionId(event.target.value)) {
+                              const nextActionId = event.target.value;
+                              setEditingActionId(nextActionId);
+                              if (nextActionId === "weight") {
+                                setEditingWeightValue("");
+                              } else if (editingActionId === "weight") {
+                                setEditingNote("");
+                              }
+                            }
+                          }}
+                        >
+                          {checkInActions.map((action) => (
+                            <option key={action.id} value={action.id}>
+                              {action.icon} {action.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {editingActionId === "weight" ? (
+                        <label className="check-in-field weight-field">
+                          <span>體重</span>
+                          <span className="weight-input-wrap">
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              min="0.1"
+                              step="0.1"
+                              value={editingWeightValue}
+                              onChange={(event) => setEditingWeightValue(event.target.value)}
+                              placeholder="請輸入體重"
+                              required
+                            />
+                            <strong>{userDataConventions[currentUser].weightUnit}</strong>
+                          </span>
+                        </label>
+                      ) : (
+                        <label className="check-in-field">
+                          <span>備註（選填）</span>
+                          <textarea
+                            value={editingNote}
+                            onChange={(event) => setEditingNote(event.target.value)}
+                            maxLength={200}
+                            rows={3}
+                            placeholder="想留下什麼？"
+                          />
+                        </label>
+                      )}
+                      <div className="memory-edit-actions">
+                        <button
+                          type="button"
+                          className="memory-edit-cancel"
+                          onClick={cancelEditingSelectedLog}
+                          disabled={recordMutationSaving}
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="submit"
+                          className="memory-edit-save"
+                          disabled={recordMutationSaving || !editingActionId}
+                        >
+                          {recordMutationSaving ? "儲存中…" : "儲存變更"}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <p>
+                        {formatWeightContent(
+                          selectedTimelineLog.content,
+                          selectedTimelineLog.actionId,
+                          selectedTimelineLog.sourceWeightUnit,
+                          displayWeightUnit,
+                        )}
+                      </p>
+                      {selectedTimelineLog.isLegacy && (
+                        <span className="legacy-tag">舊格式資料</span>
+                      )}
+                      {!selectedLogIsOwned && (
+                        <span className="read-only-tag">對方紀錄僅供查看</span>
+                      )}
+                      {selectedLogIsOwned && (
+                        <div className="memory-detail-actions">
+                          <button
+                            type="button"
+                            onClick={beginEditingSelectedLog}
+                            disabled={recordMutationSaving}
+                          >
+                            編輯
+                          </button>
+                          <button
+                            type="button"
+                            className="memory-delete-button"
+                            onClick={() => void deleteSelectedLog()}
+                            disabled={recordMutationSaving}
+                          >
+                            刪除
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {recordMutationError && (
+                    <p className="memory-mutation-error" role="alert">
+                      {recordMutationError}
+                    </p>
                   )}
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSelectedTimelineLog(null)}
+                  onClick={closeTimelineLog}
                   aria-label="關閉回憶內容"
                 >
                   ×

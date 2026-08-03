@@ -2,10 +2,13 @@ import {
   Timestamp,
   addDoc,
   collection,
+  deleteDoc,
+  doc,
   getDoc,
   getDocs,
   serverTimestamp,
   type DocumentData,
+  updateDoc,
 } from "firebase/firestore";
 
 import type { CheckInActionId } from "./action-catalog";
@@ -56,6 +59,12 @@ export type CreateTimeCapsuleLogInput = {
   content: string;
   user: CurrentUser;
   timeZone: string;
+};
+
+export type UpdateTimeCapsuleLogInput = {
+  actionId: CheckInActionId;
+  content: string;
+  user: CurrentUser;
 };
 
 function describeType(value: unknown): string {
@@ -245,4 +254,50 @@ export async function createTimeCapsuleLog(
   }
 
   return parseDocument(createdSnapshot.id, createdSnapshot.data());
+}
+
+async function getOwnedLog(
+  id: string,
+  user: CurrentUser,
+): Promise<{ reference: ReturnType<typeof doc>; log: TimeCapsuleLog }> {
+  if (!id) throw new Error("找不到要操作的紀錄");
+
+  const reference = doc(db, "time_capsule_logs", id);
+  const snapshot = await getDoc(reference);
+  if (!snapshot.exists()) throw new Error("這筆紀錄已不存在");
+
+  const log = parseDocument(snapshot.id, snapshot.data());
+  if (log.user !== user) throw new Error("只能修改或刪除自己的紀錄");
+
+  return { reference, log };
+}
+
+export async function updateTimeCapsuleLog(
+  id: string,
+  input: UpdateTimeCapsuleLogInput,
+): Promise<TimeCapsuleLog> {
+  const { reference } = await getOwnedLog(id, input.user);
+
+  // Preserve the original author, recorded time, and time zone. Editing only
+  // changes the category/content and records when the edit was made.
+  await updateDoc(reference, {
+    actionId: input.actionId,
+    content: input.content,
+    updatedAt: serverTimestamp(),
+  });
+
+  const updatedSnapshot = await getDoc(reference);
+  if (!updatedSnapshot.exists()) {
+    throw new Error("紀錄已更新，但無法讀回更新後的內容");
+  }
+
+  return parseDocument(updatedSnapshot.id, updatedSnapshot.data());
+}
+
+export async function deleteTimeCapsuleLog(
+  id: string,
+  user: CurrentUser,
+): Promise<void> {
+  const { reference } = await getOwnedLog(id, user);
+  await deleteDoc(reference);
 }

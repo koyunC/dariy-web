@@ -6,7 +6,11 @@ import {
   calculateCheckInProgress,
   getRollingDateRange,
 } from "../src/lib/check-in-stats.ts";
-import { prepareCheckIn } from "../src/lib/check-in-write.ts";
+import {
+  extractCheckInContentValue,
+  extractWeightValue,
+  prepareCheckIn,
+} from "../src/lib/check-in-write.ts";
 import type { TimeCapsuleLog } from "../src/lib/logs.ts";
 import {
   createSevenDayMemoryTimeline,
@@ -119,6 +123,21 @@ test("weight check-ins explicitly store the recorder's unit", () => {
       weightUnit: "kg",
     }),
     /有效的體重/,
+  );
+});
+
+test("existing check-in content can be opened in the edit form", () => {
+  assert.equal(
+    extractCheckInContentValue("💪運動：跑步 3 公里"),
+    "跑步 3 公里",
+  );
+  assert.equal(
+    extractCheckInContentValue("🍳煮飯"),
+    "",
+  );
+  assert.equal(
+    extractWeightValue("⚖️體重：139.2 lb"),
+    "139.2",
   );
 });
 
