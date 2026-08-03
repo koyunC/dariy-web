@@ -299,24 +299,49 @@
 }
 
 .progress-icon {
-  --progress: 0%;
   width: clamp(3.5rem, 18vw, 5.25rem);
   aspect-ratio: 1;
-  padding: 0.32rem;
   display: grid;
   place-items: center;
+  position: relative;
   border-radius: 50%;
-  background: conic-gradient(
-    var(--accent) var(--progress),
-    color-mix(in srgb, var(--accent) 13%, transparent) 0
-  );
 }
 
-.progress-icon span {
+.progress-icon svg {
   width: 100%;
   height: 100%;
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  transform: rotate(-90deg);
+}
+
+.progress-ring-track,
+.progress-ring-layer {
+  fill: none;
+  stroke-width: 8;
+}
+
+.progress-ring-track {
+  stroke: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.progress-ring-layer {
+  stroke-linecap: round;
+}
+
+.progress-ring-layer-0 { stroke: var(--accent); }
+.progress-ring-layer-1 { stroke: #bd6f7c; }
+.progress-ring-layer-2 { stroke: #d29b52; }
+.progress-ring-layer-3 { stroke: #6fa58f; }
+
+.progress-icon span {
+  width: calc(100% - 0.8rem);
+  height: calc(100% - 0.8rem);
   display: grid;
   place-items: center;
+  position: relative;
+  z-index: 1;
   border-radius: 50%;
   background: #fff;
   font-size: clamp(1.35rem, 6vw, 2rem);

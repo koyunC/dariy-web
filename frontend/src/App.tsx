@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import "./App.css";
 import { checkInActions } from "./lib/action-catalog";
@@ -57,17 +57,40 @@ type ProgressCardProps = {
 
 function ProgressCard({ icon, label, progress }: ProgressCardProps) {
   const percentage = Math.round(progress.percentage * 100);
+  const layers = Array.from(
+    { length: Math.ceil(progress.percentage) },
+    (_, index) => Math.min(
+      100,
+      Math.max(0, progress.percentage * 100 - index * 100),
+    ),
+  );
 
   return (
     <article
       className="progress-card"
       aria-label={`${label}：完成 ${progress.completedCount} 次，累計目標 ${progress.targetCount} 次，達成率 ${percentage}%`}
     >
-      <div
-        className="progress-icon"
-        style={{ "--progress": `${percentage}%` } as CSSProperties}
-        aria-hidden="true"
-      >
+      <div className="progress-icon" aria-hidden="true">
+        <svg viewBox="0 0 100 100">
+          <circle
+            className="progress-ring-track"
+            cx="50"
+            cy="50"
+            r="43"
+            pathLength="100"
+          />
+          {layers.map((layerProgress, index) => (
+            <circle
+              key={index}
+              className={`progress-ring-layer progress-ring-layer-${index % 4}`}
+              cx="50"
+              cy="50"
+              r="43"
+              pathLength="100"
+              strokeDasharray={`${layerProgress} 100`}
+            />
+          ))}
+        </svg>
         <span>{icon}</span>
       </div>
       <strong>{progress.completedCount}/{progress.targetCount}</strong>

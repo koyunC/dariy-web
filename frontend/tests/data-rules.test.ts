@@ -79,7 +79,7 @@ function logAt(
   };
 }
 
-test("check-in progress counts distinct days for the selected user", () => {
+test("check-in progress counts all matching records for the selected user", () => {
   const logs = [
     logAt("stone", "2026-08-03T01:00:00Z"),
     logAt("stone", "2026-08-03T12:00:00Z"),
@@ -92,9 +92,9 @@ test("check-in progress counts distinct days for the selected user", () => {
     end: "2026-08-03",
   }, "exercise", "Asia/Taipei", 1, 1);
 
-  assert.equal(progress.completedCount, 2);
+  assert.equal(progress.completedCount, 3);
   assert.equal(progress.targetCount, 7);
-  assert.equal(progress.percentage, 2 / 7);
+  assert.equal(progress.percentage, 3 / 7);
 });
 
 test("check-in days use the recorder's calendar time zone", () => {
@@ -174,7 +174,7 @@ test("a record's captured time zone overrides the current fallback zone", () => 
   );
 });
 
-test("check-ins accumulate but are capped inside each goal period", () => {
+test("check-ins accumulate inside each goal period", () => {
   const logs = [
     logAt("stone", "2026-08-03T01:00:00Z"),
     logAt("stone", "2026-08-03T12:00:00Z"),
@@ -262,9 +262,31 @@ test("twice-daily goals produce a weekly cumulative target of fourteen", () => {
     1,
   );
 
-  assert.equal(progress.completedCount, 3);
+  assert.equal(progress.completedCount, 4);
   assert.equal(progress.targetCount, 14);
-  assert.equal(progress.percentage, 3 / 14);
+  assert.equal(progress.percentage, 4 / 14);
+});
+
+test("progress can exceed one hundred percent", () => {
+  const logs = [
+    logAt("stone", "2026-08-03T01:00:00Z"),
+    logAt("stone", "2026-08-03T02:00:00Z"),
+    logAt("stone", "2026-08-03T03:00:00Z"),
+  ];
+
+  const progress = calculateCheckInProgress(
+    logs,
+    "stone",
+    { start: "2026-08-03", end: "2026-08-03" },
+    "exercise",
+    "Asia/Taipei",
+    2,
+    1,
+  );
+
+  assert.equal(progress.completedCount, 3);
+  assert.equal(progress.targetCount, 2);
+  assert.equal(progress.percentage, 1.5);
 });
 
 test("rolling ranges include today and the requested number of days", () => {

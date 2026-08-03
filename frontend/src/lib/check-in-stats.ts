@@ -119,7 +119,7 @@ export function calculateCheckInProgress(
   });
 
   const completedCount = [...checkInCounts.values()].reduce(
-    (total, count) => total + Math.min(count, targetCount),
+    (total, count) => total + count,
     0,
   );
   return {
