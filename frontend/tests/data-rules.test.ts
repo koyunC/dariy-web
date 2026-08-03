@@ -92,8 +92,8 @@ test("check-in progress counts distinct days for the selected user", () => {
     end: "2026-08-03",
   }, "exercise", "Asia/Taipei", 1, 1);
 
-  assert.equal(progress.completedPeriods, 2);
-  assert.equal(progress.totalPeriods, 7);
+  assert.equal(progress.completedCount, 2);
+  assert.equal(progress.targetCount, 7);
   assert.equal(progress.percentage, 2 / 7);
 });
 
@@ -104,7 +104,7 @@ test("check-in days use the recorder's calendar time zone", () => {
     calculateCheckInProgress([sameInstant], "cloud", {
       start: "2026-08-02",
       end: "2026-08-02",
-    }, "exercise", "America/New_York", 1, 1).completedPeriods,
+    }, "exercise", "America/New_York", 1, 1).completedCount,
     1,
   );
 });
@@ -125,7 +125,7 @@ test("check-in progress is calculated separately for each action", () => {
       "Asia/Taipei",
       1,
       1,
-    ).completedPeriods,
+    ).completedCount,
     1,
   );
   assert.equal(
@@ -137,7 +137,7 @@ test("check-in progress is calculated separately for each action", () => {
       "Asia/Taipei",
       1,
       1,
-    ).completedPeriods,
+    ).completedCount,
     1,
   );
   assert.equal(
@@ -149,7 +149,7 @@ test("check-in progress is calculated separately for each action", () => {
       "Asia/Taipei",
       1,
       1,
-    ).completedPeriods,
+    ).completedCount,
     0,
   );
 });
@@ -169,12 +169,12 @@ test("a record's captured time zone overrides the current fallback zone", () => 
       "America/New_York",
       1,
       1,
-    ).completedPeriods,
+    ).completedCount,
     1,
   );
 });
 
-test("target counts must be met inside each goal period", () => {
+test("check-ins accumulate but are capped inside each goal period", () => {
   const logs = [
     logAt("stone", "2026-08-03T01:00:00Z"),
     logAt("stone", "2026-08-03T12:00:00Z"),
@@ -191,8 +191,8 @@ test("target counts must be met inside each goal period", () => {
     1,
   );
 
-  assert.equal(progress.completedPeriods, 1);
-  assert.equal(progress.totalPeriods, 2);
+  assert.equal(progress.completedCount, 3);
+  assert.equal(progress.targetCount, 4);
 });
 
 test("goal defaults and stored overrides are normalized", () => {
@@ -240,8 +240,31 @@ test("exercise completes one goal period with one check-in every two days", () =
     2,
   );
 
-  assert.equal(progress.completedPeriods, 2);
-  assert.equal(progress.totalPeriods, 2);
+  assert.equal(progress.completedCount, 2);
+  assert.equal(progress.targetCount, 2);
+});
+
+test("twice-daily goals produce a weekly cumulative target of fourteen", () => {
+  const logs = [
+    logAt("stone", "2026-08-03T01:00:00Z"),
+    logAt("stone", "2026-08-03T02:00:00Z"),
+    logAt("stone", "2026-08-03T03:00:00Z"),
+    logAt("stone", "2026-08-02T01:00:00Z"),
+  ];
+
+  const progress = calculateCheckInProgress(
+    logs,
+    "stone",
+    { start: "2026-07-28", end: "2026-08-03" },
+    "exercise",
+    "Asia/Taipei",
+    2,
+    1,
+  );
+
+  assert.equal(progress.completedCount, 3);
+  assert.equal(progress.targetCount, 14);
+  assert.equal(progress.percentage, 3 / 14);
 });
 
 test("rolling ranges include today and the requested number of days", () => {

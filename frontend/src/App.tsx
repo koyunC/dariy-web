@@ -61,7 +61,7 @@ function ProgressCard({ icon, label, progress }: ProgressCardProps) {
   return (
     <article
       className="progress-card"
-      aria-label={`${label}：完成 ${progress.completedPeriods} 個目標週期，共 ${progress.totalPeriods} 個，達成率 ${percentage}%`}
+      aria-label={`${label}：完成 ${progress.completedCount} 次，累計目標 ${progress.targetCount} 次，達成率 ${percentage}%`}
     >
       <div
         className="progress-icon"
@@ -70,7 +70,7 @@ function ProgressCard({ icon, label, progress }: ProgressCardProps) {
       >
         <span>{icon}</span>
       </div>
-      <strong>{progress.completedPeriods}/{progress.totalPeriods}</strong>
+      <strong>{progress.completedCount}/{progress.targetCount}</strong>
     </article>
   );
 }

@@ -7,8 +7,8 @@ export type DateRange = {
 };
 
 export type CheckInProgress = DateRange & {
-  completedPeriods: number;
-  totalPeriods: number;
+  completedCount: number;
+  targetCount: number;
   percentage: number;
 };
 
@@ -90,10 +90,11 @@ export function calculateCheckInProgress(
 ): CheckInProgress {
   const totalDays = countInclusiveDays(range.start, range.end);
   if (totalDays === 0) {
-    return { ...range, completedPeriods: 0, totalPeriods: 0, percentage: 0 };
+    return { ...range, completedCount: 0, targetCount: 0, percentage: 0 };
   }
 
   const totalPeriods = Math.ceil(totalDays / periodDays);
+  const totalTargetCount = totalPeriods * targetCount;
   const checkInCounts = new Map<number, number>();
 
   logs.forEach((log) => {
@@ -117,13 +118,14 @@ export function calculateCheckInProgress(
     }
   });
 
-  const completedPeriods = [...checkInCounts.values()].filter(
-    (count) => count >= targetCount,
-  ).length;
+  const completedCount = [...checkInCounts.values()].reduce(
+    (total, count) => total + Math.min(count, targetCount),
+    0,
+  );
   return {
     ...range,
-    completedPeriods,
-    totalPeriods,
-    percentage: completedPeriods / totalPeriods,
+    completedCount,
+    targetCount: totalTargetCount,
+    percentage: completedCount / totalTargetCount,
   };
 }
