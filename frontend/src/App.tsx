@@ -190,6 +190,7 @@ function App() {
     useState<CheckInActionId | null>(null);
   const [editingNote, setEditingNote] = useState("");
   const [editingWeightValue, setEditingWeightValue] = useState("");
+  const [editingWeightUnit, setEditingWeightUnit] = useState<WeightUnit>("kg");
   const [recordMutationSaving, setRecordMutationSaving] = useState(false);
   const [recordMutationError, setRecordMutationError] = useState("");
   const [selectedTimelineDayKey, setSelectedTimelineDayKey] =
@@ -467,6 +468,10 @@ function App() {
         ? extractWeightValue(contentValue || selectedTimelineLog.content)
         : "",
     );
+    setEditingWeightUnit(
+      selectedTimelineLog.sourceWeightUnit
+        ?? userDataConventions[currentUser].weightUnit,
+    );
     setRecordMutationError("");
   };
 
@@ -475,6 +480,7 @@ function App() {
     setEditingActionId(null);
     setEditingNote("");
     setEditingWeightValue("");
+    setEditingWeightUnit("kg");
     setRecordMutationError("");
   };
 
@@ -497,7 +503,7 @@ function App() {
         actionId: editingActionId,
         note: editingNote,
         weightValue: editingWeightValue,
-        weightUnit: userDataConventions[currentUser].weightUnit,
+        weightUnit: editingWeightUnit,
       });
       const updatedLog = await updateTimeCapsuleLog(
         selectedTimelineLog.id,
@@ -694,7 +700,7 @@ function App() {
         actionId,
         note: checkInNote,
         weightValue,
-        weightUnit: userDataConventions[currentUser].weightUnit,
+        weightUnit: weightUnitPreferences[currentUser],
       });
 
       const createdLog = await createTimeCapsuleLog({
@@ -946,7 +952,7 @@ function App() {
                 </div>
                 {selectedAction === "weight" ? (
                   <label className="check-in-field weight-field">
-                    <span>體重</span>
+                    <span>體重（輸入單位）</span>
                     <span className="weight-input-wrap">
                       <input
                         type="number"
@@ -955,11 +961,23 @@ function App() {
                         step="0.1"
                         value={weightValue}
                         onChange={(event) => setWeightValue(event.target.value)}
-                        placeholder={currentUser === "cloud" ? "例如 140.0" : "例如 63.5"}
+                        placeholder={weightUnitPreferences[currentUser] === "lb" ? "例如 140.0" : "例如 63.5"}
                         autoFocus
                         required
                       />
-                      <strong>{userDataConventions[currentUser].weightUnit}</strong>
+                      <span className="weight-unit-picker" aria-label="體重輸入單位">
+                        {(["lb", "kg"] as const).map((unit) => (
+                          <button
+                            key={unit}
+                            type="button"
+                            className={weightUnitPreferences[currentUser] === unit ? "is-active" : ""}
+                            onClick={() => chooseWeightUnit(unit)}
+                            aria-pressed={weightUnitPreferences[currentUser] === unit}
+                          >
+                            {unit}
+                          </button>
+                        ))}
+                      </span>
                     </span>
                   </label>
                 ) : (
@@ -1264,7 +1282,19 @@ function App() {
                               placeholder="請輸入體重"
                               required
                             />
-                            <strong>{userDataConventions[currentUser].weightUnit}</strong>
+                            <span className="weight-unit-picker" aria-label="體重編輯單位">
+                              {(["lb", "kg"] as const).map((unit) => (
+                                <button
+                                  key={unit}
+                                  type="button"
+                                  className={editingWeightUnit === unit ? "is-active" : ""}
+                                  onClick={() => setEditingWeightUnit(unit)}
+                                  aria-pressed={editingWeightUnit === unit}
+                                >
+                                  {unit}
+                                </button>
+                              ))}
+                            </span>
                           </span>
                         </label>
                       ) : (
