@@ -6,7 +6,11 @@ import {
   calculateCheckInProgress,
   getRollingDateRange,
 } from "../src/lib/check-in-stats.ts";
-import { prepareCheckIn } from "../src/lib/check-in-write.ts";
+import {
+  extractCheckInContentValue,
+  extractWeightValue,
+  prepareCheckIn,
+} from "../src/lib/check-in-write.ts";
 import type { TimeCapsuleLog } from "../src/lib/logs.ts";
 import {
   createSevenDayMemoryTimeline,
@@ -22,6 +26,30 @@ import {
   formatTimestampForUser,
   formatWeightContent,
 } from "../src/lib/user-data.ts";
+import { findUsersByAuthUID } from "../src/lib/user-identity.ts";
+
+test("Google authUID resolves exactly one application profile", () => {
+  const metadata = {
+    cloud: { authUID: "google-cloud-uid" },
+    stone: { authUID: "google-stone-uid" },
+  };
+
+  assert.deepEqual(
+    findUsersByAuthUID("google-stone-uid", metadata),
+    ["stone"],
+  );
+  assert.deepEqual(findUsersByAuthUID("unknown-uid", metadata), []);
+});
+
+test("duplicate authUID bindings are surfaced instead of guessed", () => {
+  assert.deepEqual(
+    findUsersByAuthUID("duplicate-uid", {
+      cloud: { authUID: "duplicate-uid" },
+      stone: { authUID: "duplicate-uid" },
+    }),
+    ["cloud", "stone"],
+  );
+});
 
 test("recent history includes exactly seven days and excludes older records", () => {
   const now = Date.parse("2026-08-03T00:00:00Z");
@@ -95,6 +123,21 @@ test("weight check-ins explicitly store the recorder's unit", () => {
       weightUnit: "kg",
     }),
     /有效的體重/,
+  );
+});
+
+test("existing check-in content can be opened in the edit form", () => {
+  assert.equal(
+    extractCheckInContentValue("💪運動：跑步 3 公里"),
+    "跑步 3 公里",
+  );
+  assert.equal(
+    extractCheckInContentValue("🍳煮飯"),
+    "",
+  );
+  assert.equal(
+    extractWeightValue("⚖️體重：139.2 lb"),
+    "139.2",
   );
 });
 
