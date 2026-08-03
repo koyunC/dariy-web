@@ -6,6 +6,7 @@ import {
   calculateCheckInProgress,
   getRollingDateRange,
 } from "../src/lib/check-in-stats.ts";
+import { prepareCheckIn } from "../src/lib/check-in-write.ts";
 import type { TimeCapsuleLog } from "../src/lib/logs.ts";
 import {
   createSevenDayMemoryTimeline,
@@ -60,6 +61,40 @@ test("an explicit historical weight unit overrides the recorder default", () => 
   assert.equal(
     formatWeightContent("⚖️ 體重：74 kg", "weight", "lb", "lb"),
     "⚖️ 體重：163.1 lb",
+  );
+});
+
+test("check-in content retains the selected category and optional note", () => {
+  assert.deepEqual(
+    prepareCheckIn({
+      actionId: "exercise",
+      note: "  跑步 3 公里  ",
+      weightUnit: "kg",
+    }),
+    { actionId: "exercise", content: "💪運動：跑步 3 公里" },
+  );
+  assert.deepEqual(
+    prepareCheckIn({ actionId: "cook", weightUnit: "kg" }),
+    { actionId: "cook", content: "🍳煮飯" },
+  );
+});
+
+test("weight check-ins explicitly store the recorder's unit", () => {
+  assert.deepEqual(
+    prepareCheckIn({
+      actionId: "weight",
+      weightValue: "139.2",
+      weightUnit: "lb",
+    }),
+    { actionId: "weight", content: "⚖️體重：139.2 lb" },
+  );
+  assert.throws(
+    () => prepareCheckIn({
+      actionId: "weight",
+      weightValue: "0",
+      weightUnit: "kg",
+    }),
+    /有效的體重/,
   );
 });
 

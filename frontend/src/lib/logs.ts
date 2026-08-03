@@ -1,10 +1,15 @@
 import {
   Timestamp,
+  addDoc,
   collection,
+  getDoc,
   getDocs,
+  serverTimestamp,
   type DocumentData,
 } from "firebase/firestore";
 
+import type { CheckInActionId } from "./action-catalog";
+import type { CurrentUser } from "./current-user";
 import { db, firestoreDatabaseId } from "./firebase";
 import {
   getUserDataConvention,
@@ -44,6 +49,13 @@ export type LogReadDiagnostics = {
 export type TimeCapsuleLogResult = {
   logs: TimeCapsuleLog[];
   diagnostics: LogReadDiagnostics;
+};
+
+export type CreateTimeCapsuleLogInput = {
+  actionId: CheckInActionId;
+  content: string;
+  user: CurrentUser;
+  timeZone: string;
 };
 
 function describeType(value: unknown): string {
@@ -203,4 +215,34 @@ export async function getTimeCapsuleLogs(): Promise<TimeCapsuleLogResult> {
       skippedDocuments,
     },
   };
+}
+
+export async function createTimeCapsuleLog(
+  input: CreateTimeCapsuleLogInput,
+): Promise<TimeCapsuleLog> {
+  if (!isValidTimeZone(input.timeZone)) {
+    throw new Error("無法寫入：目前時區無效");
+  }
+
+  const documentReference = await addDoc(
+    collection(db, "time_capsule_logs"),
+    {
+      actionId: input.actionId,
+      content: input.content,
+      createdAt: serverTimestamp(),
+      time: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      user: input.user,
+      timeZone: input.timeZone,
+    },
+  );
+
+  // Read back only the newly created document so server timestamps are
+  // resolved without downloading the entire collection after every check-in.
+  const createdSnapshot = await getDoc(documentReference);
+  if (!createdSnapshot.exists()) {
+    throw new Error("打卡已送出，但無法讀回新增的紀錄");
+  }
+
+  return parseDocument(createdSnapshot.id, createdSnapshot.data());
 }

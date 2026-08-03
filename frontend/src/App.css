@@ -413,20 +413,110 @@
 .action-grid button span { font-size: 1.55rem; }
 .action-grid button small { font-size: 0.75rem; font-weight: 700; }
 
-.composer-preview {
+.check-in-composer {
   margin-top: 0.8rem;
   padding: 0.8rem;
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
   gap: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
   border-radius: 1rem;
   background: var(--accent-soft);
 }
-.composer-preview > span { font-size: 1.5rem; }
-.composer-preview p { margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.45; }
-.composer-preview strong { color: var(--ink); font-size: 0.85rem; }
-.composer-preview button { padding: 0.45rem; border: 0; background: transparent; color: var(--accent); cursor: pointer; font-size: 0.75rem; }
+
+.check-in-composer-heading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.check-in-composer-heading > span { font-size: 1.5rem; }
+.check-in-composer-heading > strong { font-size: 0.9rem; }
+.check-in-composer-heading > button {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 1.25rem;
+}
+
+.check-in-field {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.check-in-field textarea,
+.check-in-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  outline: none;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.check-in-field textarea { resize: vertical; }
+.check-in-field textarea:focus,
+.check-in-field input:focus { border-color: var(--accent); }
+
+.weight-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.weight-input-wrap > strong {
+  min-width: 2.5rem;
+  color: var(--accent);
+  font-size: 0.82rem;
+  text-align: center;
+  text-transform: lowercase;
+}
+
+.check-in-time-zone,
+.check-in-error,
+.check-in-success {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.check-in-time-zone { color: var(--muted); }
+.check-in-error { color: #a24141; }
+.check-in-success {
+  margin-top: 0.8rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.75rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.submit-check-in {
+  min-height: 2.8rem;
+  border: 0;
+  border-radius: 0.8rem;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.submit-check-in:disabled { cursor: wait; opacity: 0.55; }
 
 .display-preferences {
   margin: -0.35rem 0 1rem;
