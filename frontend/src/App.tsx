@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 import "./App.css";
 import { ensureAnonymousAuth } from "./lib/auth";
@@ -13,6 +13,11 @@ import {
   type TimeCapsuleLog,
 } from "./lib/logs";
 import { isWithinRecentHistory } from "./lib/history";
+import {
+  calculateCheckInProgress,
+  getRollingDateRange,
+  type CheckInProgress,
+} from "./lib/check-in-stats";
 import {
   formatTimestampForUser,
   formatWeightContent,
@@ -38,6 +43,33 @@ const actions = [
 ] as const;
 
 type HistoryFilter = "all" | CurrentUser;
+
+type ProgressCardProps = {
+  icon: string;
+  label: string;
+  progress: CheckInProgress;
+};
+
+function ProgressCard({ icon, label, progress }: ProgressCardProps) {
+  const percentage = Math.round(progress.percentage * 100);
+
+  return (
+    <article
+      className="progress-card"
+      aria-label={`${label}：打卡 ${progress.checkedInDays} 天，共 ${progress.totalDays} 天，達成率 ${percentage}%`}
+    >
+      <span className="progress-label">{label}</span>
+      <div
+        className="progress-icon"
+        style={{ "--progress": `${percentage}%` } as CSSProperties}
+        aria-hidden="true"
+      >
+        <span>{icon}</span>
+      </div>
+      <strong>{progress.checkedInDays}/{progress.totalDays}</strong>
+    </article>
+  );
+}
 
 function formatToday(user: CurrentUser): string {
   return new Intl.DateTimeFormat("zh-TW", {
@@ -83,6 +115,13 @@ function App() {
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [historyReferenceTime, setHistoryReferenceTime] = useState(() =>
     Date.now(),
+  );
+  const [customRange, setCustomRange] = useState(() =>
+    getRollingDateRange(
+      historyReferenceTime,
+      14,
+      userDataConventions[currentUser ?? "stone"].timeZone,
+    ),
   );
   const [weightUnitPreferences, setWeightUnitPreferences] = useState<
     Record<CurrentUser, WeightUnit>
@@ -164,6 +203,28 @@ function App() {
       ),
     [historyFilter, recentLogs],
   );
+
+  const progressRanges = useMemo(() => {
+    if (!currentUser) return null;
+
+    const timeZone = userDataConventions[currentUser].timeZone;
+    const weekRange = getRollingDateRange(
+      historyReferenceTime,
+      7,
+      timeZone,
+    );
+    const monthRange = getRollingDateRange(
+      historyReferenceTime,
+      30,
+      timeZone,
+    );
+
+    return {
+      week: calculateCheckInProgress(logs, currentUser, weekRange),
+      month: calculateCheckInProgress(logs, currentUser, monthRange),
+      custom: calculateCheckInProgress(logs, currentUser, customRange),
+    };
+  }, [currentUser, customRange, historyReferenceTime, logs]);
 
   const chooseUser = (user: CurrentUser) => {
     setCurrentUserInUrl(user);
@@ -250,6 +311,53 @@ function App() {
           </section>
 
           {error && <div className="error-banner" role="alert">{error}</div>}
+
+          {progressRanges && (
+            <section className="section progress-section" aria-labelledby="progress-title">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Check-in progress</p>
+                  <h2 id="progress-title">打卡達成率</h2>
+                </div>
+              </div>
+              <div className="progress-grid">
+                <ProgressCard icon="🌱" label="過去一週" progress={progressRanges.week} />
+                <ProgressCard icon="🌿" label="過去一個月" progress={progressRanges.month} />
+                <ProgressCard icon="🌳" label="自訂區間" progress={progressRanges.custom} />
+              </div>
+              <div className="custom-range" aria-label="自訂統計區間">
+                <label>
+                  <span>開始</span>
+                  <input
+                    type="date"
+                    value={customRange.start}
+                    max={customRange.end}
+                    onChange={(event) =>
+                      setCustomRange((range) => ({
+                        ...range,
+                        start: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <span aria-hidden="true">—</span>
+                <label>
+                  <span>結束</span>
+                  <input
+                    type="date"
+                    value={customRange.end}
+                    min={customRange.start}
+                    onChange={(event) =>
+                      setCustomRange((range) => ({
+                        ...range,
+                        end: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            </section>
+          )}
 
           <section className="section quick-section" aria-labelledby="quick-title">
             <div className="section-heading">
