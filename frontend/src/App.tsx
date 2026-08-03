@@ -32,12 +32,13 @@ import {
   type UserTimeZoneSyncResult,
 } from "./lib/user-metadata";
 import {
-  defaultDailyTargets,
-  type DailyTargets,
+  defaultCheckInGoals,
+  normalizeCheckInGoals,
+  type CheckInGoals,
 } from "./lib/preference-rules";
 import {
-  getUserDailyTargets,
-  saveUserDailyTargets,
+  getUserCheckInGoals,
+  saveUserCheckInGoals,
 } from "./lib/user-preferences";
 
 const profiles: Record<CurrentUser, { name: string; symbol: string; greeting: string }> = {
@@ -60,7 +61,7 @@ function ProgressCard({ icon, label, progress }: ProgressCardProps) {
   return (
     <article
       className="progress-card"
-      aria-label={`${label}：打卡 ${progress.checkedInDays} 天，共 ${progress.totalDays} 天，達成率 ${percentage}%`}
+      aria-label={`${label}：完成 ${progress.completedPeriods} 個目標週期，共 ${progress.totalPeriods} 個，達成率 ${percentage}%`}
     >
       <div
         className="progress-icon"
@@ -69,7 +70,7 @@ function ProgressCard({ icon, label, progress }: ProgressCardProps) {
       >
         <span>{icon}</span>
       </div>
-      <strong>{progress.checkedInDays}/{progress.totalDays}</strong>
+      <strong>{progress.completedPeriods}/{progress.totalPeriods}</strong>
     </article>
   );
 }
@@ -114,12 +115,12 @@ function App() {
   const [uid, setUid] = useState("");
   const [timeZoneSync, setTimeZoneSync] =
     useState<UserTimeZoneSyncResult | null>(null);
-  const [dailyTargets, setDailyTargets] = useState<DailyTargets>(() => ({
-    ...defaultDailyTargets,
-  }));
-  const [draftDailyTargets, setDraftDailyTargets] = useState<DailyTargets>(() => ({
-    ...defaultDailyTargets,
-  }));
+  const [checkInGoals, setCheckInGoals] = useState<CheckInGoals>(() =>
+    normalizeCheckInGoals(defaultCheckInGoals),
+  );
+  const [draftCheckInGoals, setDraftCheckInGoals] = useState<CheckInGoals>(() =>
+    normalizeCheckInGoals(defaultCheckInGoals),
+  );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [preferencesSaving, setPreferencesSaving] = useState(false);
@@ -171,7 +172,7 @@ function App() {
       try {
         setError("");
         setTimeZoneSync(null);
-        setDailyTargets({ ...defaultDailyTargets });
+        setCheckInGoals(normalizeCheckInGoals(defaultCheckInGoals));
         setLogs([]);
         setDiagnostics(null);
 
@@ -202,14 +203,14 @@ function App() {
         );
         setStatus("正在翻閱過去的紀錄…");
 
-        const [result, storedDailyTargets] = await Promise.all([
+        const [result, storedCheckInGoals] = await Promise.all([
           getTimeCapsuleLogs(),
-          getUserDailyTargets(currentUser),
+          getUserCheckInGoals(currentUser),
         ]);
         if (!isActive) return;
 
         setLogs(result.logs);
-        setDailyTargets(storedDailyTargets);
+        setCheckInGoals(storedCheckInGoals);
         setDiagnostics(result.diagnostics);
         setStatus(`已載入 ${result.diagnostics.retainedCount} 則共同回憶`);
       } catch (caughtError) {
@@ -279,7 +280,8 @@ function App() {
         ranges[progressPeriod],
         action.id,
         timeZone,
-        dailyTargets[action.id],
+        checkInGoals[action.id].targetCount,
+        checkInGoals[action.id].periodDays,
       ),
     }));
   }, [
@@ -287,7 +289,7 @@ function App() {
     customRange,
     historyReferenceTime,
     logs,
-    dailyTargets,
+    checkInGoals,
     progressPeriod,
     timeZoneSync,
   ]);
@@ -300,19 +302,35 @@ function App() {
   };
 
   const openPreferences = () => {
-    setDraftDailyTargets({ ...dailyTargets });
+    setDraftCheckInGoals(normalizeCheckInGoals(checkInGoals));
     setPreferencesError("");
     setProfileMenuOpen(false);
     setPreferencesOpen(true);
   };
 
-  const changeDraftTarget = (
-    actionId: keyof DailyTargets,
+  const changeDraftTargetCount = (
+    actionId: keyof CheckInGoals,
     difference: number,
   ) => {
-    setDraftDailyTargets((targets) => ({
-      ...targets,
-      [actionId]: Math.min(10, Math.max(1, targets[actionId] + difference)),
+    setDraftCheckInGoals((goals) => ({
+      ...goals,
+      [actionId]: {
+        ...goals[actionId],
+        targetCount: Math.min(
+          10,
+          Math.max(1, goals[actionId].targetCount + difference),
+        ),
+      },
+    }));
+  };
+
+  const changeDraftPeriod = (
+    actionId: keyof CheckInGoals,
+    periodDays: number,
+  ) => {
+    setDraftCheckInGoals((goals) => ({
+      ...goals,
+      [actionId]: { ...goals[actionId], periodDays },
     }));
   };
 
@@ -322,11 +340,11 @@ function App() {
     setPreferencesSaving(true);
     setPreferencesError("");
     try {
-      const savedTargets = await saveUserDailyTargets(
+      const savedGoals = await saveUserCheckInGoals(
         currentUser,
-        draftDailyTargets,
+        draftCheckInGoals,
       );
-      setDailyTargets(savedTargets);
+      setCheckInGoals(savedGoals);
       setPreferencesOpen(false);
     } catch (caughtError) {
       setPreferencesError(
@@ -660,7 +678,7 @@ function App() {
             <div className="preferences-heading">
               <div>
                 <p className="eyebrow">{profiles[currentUser].name}</p>
-                <h2 id="preferences-title">每日打卡目標</h2>
+                <h2 id="preferences-title">打卡頻率目標</h2>
               </div>
               <button
                 type="button"
@@ -677,26 +695,43 @@ function App() {
                     <span aria-hidden="true">{action.icon}</span>
                     <strong>{action.label}</strong>
                   </span>
-                  <span className="target-stepper">
-                    <button
-                      type="button"
-                      onClick={() => changeDraftTarget(action.id, -1)}
-                      disabled={draftDailyTargets[action.id] <= 1}
-                      aria-label={`減少${action.label}每日目標`}
-                    >
-                      −
-                    </button>
-                    <output aria-label={`${action.label}每日目標`}>
-                      {draftDailyTargets[action.id]}
-                    </output>
-                    <button
-                      type="button"
-                      onClick={() => changeDraftTarget(action.id, 1)}
-                      disabled={draftDailyTargets[action.id] >= 10}
-                      aria-label={`增加${action.label}每日目標`}
-                    >
-                      ＋
-                    </button>
+                  <span className="goal-controls">
+                    <span className="target-stepper">
+                      <button
+                        type="button"
+                        onClick={() => changeDraftTargetCount(action.id, -1)}
+                        disabled={draftCheckInGoals[action.id].targetCount <= 1}
+                        aria-label={`減少${action.label}目標次數`}
+                      >
+                        −
+                      </button>
+                      <output aria-label={`${action.label}目標次數`}>
+                        {draftCheckInGoals[action.id].targetCount}
+                      </output>
+                      <button
+                        type="button"
+                        onClick={() => changeDraftTargetCount(action.id, 1)}
+                        disabled={draftCheckInGoals[action.id].targetCount >= 10}
+                        aria-label={`增加${action.label}目標次數`}
+                      >
+                        ＋
+                      </button>
+                    </span>
+                    <span className="goal-separator">次／</span>
+                    <label className="period-select">
+                      <select
+                        value={draftCheckInGoals[action.id].periodDays}
+                        onChange={(event) =>
+                          changeDraftPeriod(action.id, Number(event.target.value))
+                        }
+                        aria-label={`${action.label}目標週期`}
+                      >
+                        {[1, 2, 3, 7, 14, 30].map((days) => (
+                          <option key={days} value={days}>{days}</option>
+                        ))}
+                      </select>
+                      <span>天</span>
+                    </label>
                   </span>
                 </div>
               ))}

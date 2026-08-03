@@ -7,8 +7,8 @@ export type DateRange = {
 };
 
 export type CheckInProgress = DateRange & {
-  checkedInDays: number;
-  totalDays: number;
+  completedPeriods: number;
+  totalPeriods: number;
   percentage: number;
 };
 
@@ -72,20 +72,29 @@ function countInclusiveDays(start: string, end: string): number {
   ) + 1;
 }
 
+function daysBetween(start: string, end: string): number {
+  return Math.round(
+    (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) /
+      (24 * 60 * 60 * 1_000),
+  );
+}
+
 export function calculateCheckInProgress(
   logs: TimeCapsuleLog[],
   user: CurrentUser,
   range: DateRange,
   actionId: string,
   fallbackTimeZone: string,
-  dailyTarget: number,
+  targetCount: number,
+  periodDays: number,
 ): CheckInProgress {
   const totalDays = countInclusiveDays(range.start, range.end);
   if (totalDays === 0) {
-    return { ...range, checkedInDays: 0, totalDays: 0, percentage: 0 };
+    return { ...range, completedPeriods: 0, totalPeriods: 0, percentage: 0 };
   }
 
-  const checkInCounts = new Map<string, number>();
+  const totalPeriods = Math.ceil(totalDays / periodDays);
+  const checkInCounts = new Map<number, number>();
 
   logs.forEach((log) => {
     if (log.user !== user || log.actionId !== actionId) return;
@@ -98,17 +107,23 @@ export function calculateCheckInProgress(
       log.recordedTimeZone ?? fallbackTimeZone,
     );
     if (dateKey >= range.start && dateKey <= range.end) {
-      checkInCounts.set(dateKey, (checkInCounts.get(dateKey) ?? 0) + 1);
+      const periodIndex = Math.floor(
+        daysBetween(range.start, dateKey) / periodDays,
+      );
+      checkInCounts.set(
+        periodIndex,
+        (checkInCounts.get(periodIndex) ?? 0) + 1,
+      );
     }
   });
 
-  const checkedInDays = [...checkInCounts.values()].filter(
-    (count) => count >= dailyTarget,
+  const completedPeriods = [...checkInCounts.values()].filter(
+    (count) => count >= targetCount,
   ).length;
   return {
     ...range,
-    checkedInDays,
-    totalDays,
-    percentage: checkedInDays / totalDays,
+    completedPeriods,
+    totalPeriods,
+    percentage: completedPeriods / totalPeriods,
   };
 }

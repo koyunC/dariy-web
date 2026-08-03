@@ -563,6 +563,19 @@
 .target-action > span { font-size: 1.35rem; }
 .target-action strong { font-size: 0.8rem; }
 
+.goal-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.goal-separator {
+  color: var(--muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
 .target-stepper {
   display: grid;
   grid-template-columns: 2.25rem 2rem 2.25rem;
@@ -587,6 +600,35 @@
   font-size: 0.8rem;
   font-weight: 800;
   text-align: center;
+}
+
+.period-select {
+  min-height: 2.25rem;
+  padding: 0 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.period-select select {
+  min-height: 2rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+}
+
+@media (max-width: 23rem) {
+  .target-row { align-items: flex-start; flex-direction: column; }
+  .goal-controls { width: 100%; justify-content: flex-end; }
 }
 
 .preferences-error {

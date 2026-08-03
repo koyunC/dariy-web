@@ -3,48 +3,92 @@ import {
   type CheckInActionId,
 } from "./action-catalog.ts";
 
-export type DailyTargets = Record<CheckInActionId, number>;
+export type CheckInGoal = {
+  targetCount: number;
+  periodDays: number;
+};
 
-const twiceDailyActions = new Set<CheckInActionId>([
-  "exercise",
+export type CheckInGoals = Record<CheckInActionId, CheckInGoal>;
+
+const defaultTwiceDailyActions = new Set<CheckInActionId>([
   "study",
   "cook",
 ]);
 
-export const defaultDailyTargets: DailyTargets = Object.fromEntries(
-  checkInActions.map((action) => [
-    action.id,
-    twiceDailyActions.has(action.id) ? 2 : 1,
-  ]),
-) as DailyTargets;
+export const defaultCheckInGoals: CheckInGoals = Object.fromEntries(
+  checkInActions.map((action) => {
+    if (action.id === "exercise") {
+      return [action.id, { targetCount: 1, periodDays: 2 }];
+    }
 
-export function normalizeDailyTargets(value: unknown): DailyTargets {
-  const storedTargets =
+    return [
+      action.id,
+      {
+        targetCount: defaultTwiceDailyActions.has(action.id) ? 2 : 1,
+        periodDays: 1,
+      },
+    ];
+  }),
+) as CheckInGoals;
+
+function normalizeInteger(
+  value: unknown,
+  fallback: number,
+  maximum: number,
+): number {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= maximum
+    ? value
+    : fallback;
+}
+
+export function normalizeCheckInGoals(value: unknown): CheckInGoals {
+  const storedGoals =
     typeof value === "object" && value !== null
       ? value as Record<string, unknown>
       : {};
 
   return Object.fromEntries(
     checkInActions.map((action) => {
-      const storedTarget = storedTargets[action.id];
-      const target =
-        typeof storedTarget === "number" &&
-        Number.isInteger(storedTarget) &&
-        storedTarget >= 1 &&
-        storedTarget <= 10
-          ? storedTarget
-          : defaultDailyTargets[action.id];
-      return [action.id, target];
+      const defaultGoal = defaultCheckInGoals[action.id];
+      const storedGoal =
+        typeof storedGoals[action.id] === "object" &&
+        storedGoals[action.id] !== null
+          ? storedGoals[action.id] as Record<string, unknown>
+          : {};
+
+      return [
+        action.id,
+        {
+          targetCount: normalizeInteger(
+            storedGoal.targetCount,
+            defaultGoal.targetCount,
+            10,
+          ),
+          periodDays: normalizeInteger(
+            storedGoal.periodDays,
+            defaultGoal.periodDays,
+            30,
+          ),
+        },
+      ];
     }),
-  ) as DailyTargets;
+  ) as CheckInGoals;
 }
 
-export function hasCompleteDailyTargets(value: unknown): boolean {
+export function hasCompleteCheckInGoals(value: unknown): boolean {
   if (typeof value !== "object" || value === null) return false;
 
-  const storedTargets = value as Record<string, unknown>;
-  const normalizedTargets = normalizeDailyTargets(value);
-  return checkInActions.every(
-    (action) => storedTargets[action.id] === normalizedTargets[action.id],
-  );
+  const storedGoals = value as Record<string, unknown>;
+  const normalizedGoals = normalizeCheckInGoals(value);
+  return checkInActions.every((action) => {
+    const storedGoal = storedGoals[action.id];
+    if (typeof storedGoal !== "object" || storedGoal === null) return false;
+
+    const goal = storedGoal as Record<string, unknown>;
+    return goal.targetCount === normalizedGoals[action.id].targetCount &&
+      goal.periodDays === normalizedGoals[action.id].periodDays;
+  });
 }
