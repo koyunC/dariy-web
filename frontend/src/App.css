@@ -222,6 +222,34 @@
   gap: 0.6rem;
 }
 
+.progress-period-tabs {
+  margin-bottom: 0.85rem;
+  padding: 0.25rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.25rem;
+  border-radius: 0.85rem;
+  background: rgba(242, 239, 235, 0.72);
+}
+
+.progress-period-tabs button {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.25rem;
+  border: 0;
+  border-radius: 0.65rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.progress-period-tabs button.is-active {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 2px 10px rgba(65, 51, 71, 0.08);
+}
+
 .progress-card {
   min-width: 0;
   padding: 0.8rem 0.3rem;
@@ -232,13 +260,6 @@
   border-radius: 1.15rem;
   background: rgba(255, 255, 255, 0.82);
   text-align: center;
-}
-
-.progress-label {
-  color: var(--muted);
-  font-size: 0.66rem;
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 .progress-icon {

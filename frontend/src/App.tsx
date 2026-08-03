@@ -43,6 +43,7 @@ const actions = [
 ] as const;
 
 type HistoryFilter = "all" | CurrentUser;
+type ProgressPeriod = "week" | "month" | "custom";
 
 type ProgressCardProps = {
   icon: string;
@@ -58,7 +59,6 @@ function ProgressCard({ icon, label, progress }: ProgressCardProps) {
       className="progress-card"
       aria-label={`${label}：打卡 ${progress.checkedInDays} 天，共 ${progress.totalDays} 天，達成率 ${percentage}%`}
     >
-      <span className="progress-label">{label}</span>
       <div
         className="progress-icon"
         style={{ "--progress": `${percentage}%` } as CSSProperties}
@@ -123,6 +123,8 @@ function App() {
       userDataConventions[currentUser ?? "stone"].timeZone,
     ),
   );
+  const [progressPeriod, setProgressPeriod] =
+    useState<ProgressPeriod>("week");
   const [weightUnitPreferences, setWeightUnitPreferences] = useState<
     Record<CurrentUser, WeightUnit>
   >(() => ({
@@ -204,7 +206,7 @@ function App() {
     [historyFilter, recentLogs],
   );
 
-  const progressRanges = useMemo(() => {
+  const actionProgress = useMemo(() => {
     if (!currentUser) return null;
 
     const timeZone = userDataConventions[currentUser].timeZone;
@@ -219,12 +221,22 @@ function App() {
       timeZone,
     );
 
-    return {
-      week: calculateCheckInProgress(logs, currentUser, weekRange),
-      month: calculateCheckInProgress(logs, currentUser, monthRange),
-      custom: calculateCheckInProgress(logs, currentUser, customRange),
+    const ranges = {
+      week: weekRange,
+      month: monthRange,
+      custom: customRange,
     };
-  }, [currentUser, customRange, historyReferenceTime, logs]);
+
+    return actions.map((action) => ({
+      ...action,
+      progress: calculateCheckInProgress(
+        logs,
+        currentUser,
+        ranges[progressPeriod],
+        action.id,
+      ),
+    }));
+  }, [currentUser, customRange, historyReferenceTime, logs, progressPeriod]);
 
   const chooseUser = (user: CurrentUser) => {
     setCurrentUserInUrl(user);
@@ -312,7 +324,7 @@ function App() {
 
           {error && <div className="error-banner" role="alert">{error}</div>}
 
-          {progressRanges && (
+          {actionProgress && (
             <section className="section progress-section" aria-labelledby="progress-title">
               <div className="section-heading">
                 <div>
@@ -320,42 +332,66 @@ function App() {
                   <h2 id="progress-title">打卡達成率</h2>
                 </div>
               </div>
+              <div className="progress-period-tabs" aria-label="統計時間範圍">
+                {([
+                  ["week", "過去一週"],
+                  ["month", "一個月"],
+                  ["custom", "自訂區間"],
+                ] as const).map(([period, label]) => (
+                  <button
+                    key={period}
+                    type="button"
+                    className={progressPeriod === period ? "is-active" : ""}
+                    onClick={() => setProgressPeriod(period)}
+                    aria-pressed={progressPeriod === period}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="progress-grid">
-                <ProgressCard icon="🌱" label="過去一週" progress={progressRanges.week} />
-                <ProgressCard icon="🌿" label="過去一個月" progress={progressRanges.month} />
-                <ProgressCard icon="🌳" label="自訂區間" progress={progressRanges.custom} />
-              </div>
-              <div className="custom-range" aria-label="自訂統計區間">
-                <label>
-                  <span>開始</span>
-                  <input
-                    type="date"
-                    value={customRange.start}
-                    max={customRange.end}
-                    onChange={(event) =>
-                      setCustomRange((range) => ({
-                        ...range,
-                        start: event.target.value,
-                      }))
-                    }
+                {actionProgress.map((action) => (
+                  <ProgressCard
+                    key={action.id}
+                    icon={action.icon}
+                    label={action.label}
+                    progress={action.progress}
                   />
-                </label>
-                <span aria-hidden="true">—</span>
-                <label>
-                  <span>結束</span>
-                  <input
-                    type="date"
-                    value={customRange.end}
-                    min={customRange.start}
-                    onChange={(event) =>
-                      setCustomRange((range) => ({
-                        ...range,
-                        end: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
+                ))}
               </div>
+              {progressPeriod === "custom" && (
+                <div className="custom-range" aria-label="自訂統計區間">
+                  <label>
+                    <span>開始</span>
+                    <input
+                      type="date"
+                      value={customRange.start}
+                      max={customRange.end}
+                      onChange={(event) =>
+                        setCustomRange((range) => ({
+                          ...range,
+                          start: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <span aria-hidden="true">—</span>
+                  <label>
+                    <span>結束</span>
+                    <input
+                      type="date"
+                      value={customRange.end}
+                      min={customRange.start}
+                      onChange={(event) =>
+                        setCustomRange((range) => ({
+                          ...range,
+                          end: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+              )}
             </section>
           )}
 

@@ -84,7 +84,7 @@ test("check-in progress counts distinct days for the selected user", () => {
   const progress = calculateCheckInProgress(logs, "stone", {
     start: "2026-07-28",
     end: "2026-08-03",
-  });
+  }, "exercise");
 
   assert.equal(progress.checkedInDays, 2);
   assert.equal(progress.totalDays, 7);
@@ -98,8 +98,29 @@ test("check-in days use the recorder's calendar time zone", () => {
     calculateCheckInProgress([sameInstant], "cloud", {
       start: "2026-08-02",
       end: "2026-08-02",
-    }).checkedInDays,
+    }, "exercise").checkedInDays,
     1,
+  );
+});
+
+test("check-in progress is calculated separately for each action", () => {
+  const logs = [
+    logAt("stone", "2026-08-03T01:00:00Z"),
+    { ...logAt("stone", "2026-08-02T01:00:00Z"), actionId: "early_sleep" },
+  ];
+  const range = { start: "2026-08-01", end: "2026-08-03" };
+
+  assert.equal(
+    calculateCheckInProgress(logs, "stone", range, "exercise").checkedInDays,
+    1,
+  );
+  assert.equal(
+    calculateCheckInProgress(logs, "stone", range, "early_sleep").checkedInDays,
+    1,
+  );
+  assert.equal(
+    calculateCheckInProgress(logs, "stone", range, "cook").checkedInDays,
+    0,
   );
 });
 

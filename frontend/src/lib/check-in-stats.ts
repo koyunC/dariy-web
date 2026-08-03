@@ -77,6 +77,7 @@ export function calculateCheckInProgress(
   logs: TimeCapsuleLog[],
   user: CurrentUser,
   range: DateRange,
+  actionId: string,
 ): CheckInProgress {
   const totalDays = countInclusiveDays(range.start, range.end);
   if (totalDays === 0) {
@@ -87,7 +88,7 @@ export function calculateCheckInProgress(
   const checkedInDateKeys = new Set<string>();
 
   logs.forEach((log) => {
-    if (log.user !== user) return;
+    if (log.user !== user || log.actionId !== actionId) return;
 
     const timestamp = log.timeMilliseconds ?? log.createdAt;
     if (timestamp === null || !Number.isFinite(timestamp)) return;
