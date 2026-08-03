@@ -6,6 +6,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      deploy_production:
+        description: "Deploy the selected commit to the Firebase live channel"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -48,7 +54,7 @@ jobs:
   deploy:
     name: Deploy production
     needs: quality
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_production == true
     runs-on: ubuntu-latest
     environment:
       name: production
