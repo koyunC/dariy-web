@@ -13,8 +13,12 @@ import { auth } from "./firebase";
 let pendingAuthentication: Promise<User | null> | null = null;
 
 export async function restoreGoogleAuth(): Promise<User | null> {
-  await auth.authStateReady();
   await setPersistence(auth, browserLocalPersistence);
+
+  // Resolve a pending signInWithRedirect result before waiting for the final
+  // auth state. Firebase waits for this result during auth-state callbacks.
+  const redirectResult = await getRedirectResult(auth);
+  await auth.authStateReady();
 
   // A browser may still have an anonymous session from an older build. It
   // must not be treated as the Google account for the current app.
@@ -22,7 +26,6 @@ export async function restoreGoogleAuth(): Promise<User | null> {
     await signOut(auth);
   }
 
-  const redirectResult = await getRedirectResult(auth);
   return redirectResult?.user ?? auth.currentUser;
 }
 
