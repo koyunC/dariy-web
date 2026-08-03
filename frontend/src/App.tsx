@@ -654,12 +654,14 @@ function App() {
             {timelineRecordCount > 0 ? (
               <>
                 {!selectedTimelineDay ? (
-                  <>
-                    <div className="memory-timeline-legend" aria-label="時間軸位置說明">
-                      <span>↑ {profiles[currentUser].symbol} {profiles[currentUser].name}</span>
-                      <span>
-                        ↓ {currentUser === "cloud" ? profiles.stone.symbol : profiles.cloud.symbol}{" "}
-                        {currentUser === "cloud" ? profiles.stone.name : profiles.cloud.name}
+                  <div className="memory-timeline-frame">
+                    <div className="memory-user-rail memory-user-rail-week" aria-label="時間軸使用者位置">
+                      <span aria-label={`上方：${profiles[currentUser].name}`}>
+                        {profiles[currentUser].symbol}
+                      </span>
+                      <i aria-hidden="true" />
+                      <span aria-label={`下方：${currentUser === "cloud" ? profiles.stone.name : profiles.cloud.name}`}>
+                        {currentUser === "cloud" ? profiles.stone.symbol : profiles.cloud.symbol}
                       </span>
                     </div>
                     <div
@@ -722,7 +724,7 @@ function App() {
                         })}
                       </div>
                     </div>
-                  </>
+                  </div>
                 ) : (
                   <div className="memory-day-focus">
                     <div className="memory-day-focus-heading">
@@ -742,9 +744,19 @@ function App() {
                       <span>{selectedDayLogs.length} 則</span>
                     </div>
                     {selectedDayLogs.length > 0 ? (
-                      <div className="memory-day-detail-scroll" aria-label={`${selectedTimelineDay.dateKey} 詳細時間軸`}>
-                        <div className="memory-day-detail-track">
-                          {selectedDayLogs.map((log) => {
+                      <div className="memory-timeline-frame memory-day-detail-frame">
+                        <div className="memory-user-rail memory-user-rail-day" aria-label="單日時間軸使用者位置">
+                          <span aria-label={`上方：${profiles[currentUser].name}`}>
+                            {profiles[currentUser].symbol}
+                          </span>
+                          <i aria-hidden="true" />
+                          <span aria-label={`下方：${currentUser === "cloud" ? profiles.stone.name : profiles.cloud.name}`}>
+                            {currentUser === "cloud" ? profiles.stone.symbol : profiles.cloud.symbol}
+                          </span>
+                        </div>
+                        <div className="memory-day-detail-scroll" aria-label={`${selectedTimelineDay.dateKey} 詳細時間軸`}>
+                          <div className="memory-day-detail-track">
+                            {selectedDayLogs.map((log) => {
                             const isCurrentUser = log.user === currentUser;
                             const timestamp = getLogTimestamp(log);
                             const displayTime = timestamp && timeZoneSync
@@ -755,8 +767,8 @@ function App() {
                                   hourCycle: "h23",
                                 }).format(new Date(timestamp))
                               : "—";
-                            return (
-                              <article className="memory-day-event" key={log.id}>
+                              return (
+                                <article className="memory-day-event" key={log.id}>
                                 <div className={`memory-day-event-slot memory-day-event-upper ${isCurrentUser ? "has-event" : ""}`}>
                                   {isCurrentUser && (
                                     <button
@@ -784,9 +796,10 @@ function App() {
                                     </button>
                                   )}
                                 </div>
-                              </article>
-                            );
-                          })}
+                                </article>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     ) : (
