@@ -78,13 +78,14 @@ export function calculateCheckInProgress(
   range: DateRange,
   actionId: string,
   fallbackTimeZone: string,
+  dailyTarget: number,
 ): CheckInProgress {
   const totalDays = countInclusiveDays(range.start, range.end);
   if (totalDays === 0) {
     return { ...range, checkedInDays: 0, totalDays: 0, percentage: 0 };
   }
 
-  const checkedInDateKeys = new Set<string>();
+  const checkInCounts = new Map<string, number>();
 
   logs.forEach((log) => {
     if (log.user !== user || log.actionId !== actionId) return;
@@ -97,11 +98,13 @@ export function calculateCheckInProgress(
       log.recordedTimeZone ?? fallbackTimeZone,
     );
     if (dateKey >= range.start && dateKey <= range.end) {
-      checkedInDateKeys.add(dateKey);
+      checkInCounts.set(dateKey, (checkInCounts.get(dateKey) ?? 0) + 1);
     }
   });
 
-  const checkedInDays = checkedInDateKeys.size;
+  const checkedInDays = [...checkInCounts.values()].filter(
+    (count) => count >= dailyTarget,
+  ).length;
   return {
     ...range,
     checkedInDays,

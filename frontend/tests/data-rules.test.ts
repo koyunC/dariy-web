@@ -8,6 +8,11 @@ import {
 } from "../src/lib/check-in-stats.ts";
 import type { TimeCapsuleLog } from "../src/lib/logs.ts";
 import {
+  defaultDailyTargets,
+  hasCompleteDailyTargets,
+  normalizeDailyTargets,
+} from "../src/lib/preference-rules.ts";
+import {
   formatTimestampForUser,
   formatWeightContent,
 } from "../src/lib/user-data.ts";
@@ -85,7 +90,7 @@ test("check-in progress counts distinct days for the selected user", () => {
   const progress = calculateCheckInProgress(logs, "stone", {
     start: "2026-07-28",
     end: "2026-08-03",
-  }, "exercise", "Asia/Taipei");
+  }, "exercise", "Asia/Taipei", 1);
 
   assert.equal(progress.checkedInDays, 2);
   assert.equal(progress.totalDays, 7);
@@ -99,7 +104,7 @@ test("check-in days use the recorder's calendar time zone", () => {
     calculateCheckInProgress([sameInstant], "cloud", {
       start: "2026-08-02",
       end: "2026-08-02",
-    }, "exercise", "America/New_York").checkedInDays,
+    }, "exercise", "America/New_York", 1).checkedInDays,
     1,
   );
 });
@@ -118,6 +123,7 @@ test("check-in progress is calculated separately for each action", () => {
       range,
       "exercise",
       "Asia/Taipei",
+      1,
     ).checkedInDays,
     1,
   );
@@ -128,6 +134,7 @@ test("check-in progress is calculated separately for each action", () => {
       range,
       "early_sleep",
       "Asia/Taipei",
+      1,
     ).checkedInDays,
     1,
   );
@@ -138,6 +145,7 @@ test("check-in progress is calculated separately for each action", () => {
       range,
       "cook",
       "Asia/Taipei",
+      1,
     ).checkedInDays,
     0,
   );
@@ -156,9 +164,44 @@ test("a record's captured time zone overrides the current fallback zone", () => 
       { start: "2026-08-03", end: "2026-08-03" },
       "exercise",
       "America/New_York",
+      1,
     ).checkedInDays,
     1,
   );
+});
+
+test("twice-daily targets require two check-ins on the same day", () => {
+  const logs = [
+    logAt("stone", "2026-08-03T01:00:00Z"),
+    logAt("stone", "2026-08-03T12:00:00Z"),
+    logAt("stone", "2026-08-02T12:00:00Z"),
+  ];
+
+  const progress = calculateCheckInProgress(
+    logs,
+    "stone",
+    { start: "2026-08-02", end: "2026-08-03" },
+    "exercise",
+    "Asia/Taipei",
+    2,
+  );
+
+  assert.equal(progress.checkedInDays, 1);
+  assert.equal(progress.totalDays, 2);
+});
+
+test("daily target defaults and stored overrides are normalized", () => {
+  assert.equal(defaultDailyTargets.exercise, 2);
+  assert.equal(defaultDailyTargets.study, 2);
+  assert.equal(defaultDailyTargets.cook, 2);
+  assert.equal(defaultDailyTargets.early_sleep, 1);
+
+  const targets = normalizeDailyTargets({ exercise: 3, cook: 0 });
+  assert.equal(targets.exercise, 3);
+  assert.equal(targets.cook, 2);
+  assert.equal(targets.miss_you, 1);
+  assert.equal(hasCompleteDailyTargets(targets), true);
+  assert.equal(hasCompleteDailyTargets({ exercise: 2 }), false);
 });
 
 test("rolling ranges include today and the requested number of days", () => {
