@@ -1,27 +1,44 @@
-import { signInAnonymously, type User } from "firebase/auth";
+import {
+  browserLocalPersistence,
+  getRedirectResult,
+  GoogleAuthProvider,
+  setPersistence,
+  signInWithRedirect,
+  signOut,
+  type User,
+} from "firebase/auth";
 
 import { auth } from "./firebase";
 
-let pendingAuthentication: Promise<User> | null = null;
+let pendingAuthentication: Promise<User | null> | null = null;
 
-export function ensureAnonymousAuth(): Promise<User> {
-  if (auth.currentUser) {
-    return Promise.resolve(auth.currentUser);
+export async function restoreGoogleAuth(): Promise<User | null> {
+  await auth.authStateReady();
+  await setPersistence(auth, browserLocalPersistence);
+
+  // A browser may still have an anonymous session from an older build. It
+  // must not be treated as the Google account for the current app.
+  if (auth.currentUser?.isAnonymous) {
+    await signOut(auth);
   }
 
-  pendingAuthentication ??= auth
-    .authStateReady()
-    .then(async () => {
-      if (auth.currentUser) {
-        return auth.currentUser;
-      }
+  const redirectResult = await getRedirectResult(auth);
+  return redirectResult?.user ?? auth.currentUser;
+}
 
-      const credential = await signInAnonymously(auth);
-      return credential.user;
-    })
+export function signInWithGoogle(): Promise<void> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+
+  pendingAuthentication ??= setPersistence(auth, browserLocalPersistence)
+    .then(() => signInWithRedirect(auth, provider).then(() => null))
     .finally(() => {
       pendingAuthentication = null;
     });
 
-  return pendingAuthentication;
+  return pendingAuthentication.then(() => undefined);
+}
+
+export async function signOutGoogle(): Promise<void> {
+  await signOut(auth);
 }

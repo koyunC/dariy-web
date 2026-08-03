@@ -230,6 +230,50 @@
   font-size: 0.85rem;
 }
 
+.google-login-card {
+  padding: 1rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 22px rgba(65, 51, 71, 0.06);
+}
+
+.google-login-mark {
+  width: 2.65rem;
+  height: 2.65rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  color: #4285f4;
+  font-family: Arial, sans-serif;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.google-login-card h2 { margin: 0.1rem 0 0.2rem; font-size: 1rem; }
+.google-login-card p:not(.eyebrow) { margin: 0; color: var(--muted); font-size: 0.72rem; line-height: 1.45; }
+
+.google-login-button {
+  grid-column: 1 / -1;
+  min-height: 2.8rem;
+  border: 0;
+  border-radius: 0.8rem;
+  background: #4285f4;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.google-login-button:active { transform: translateY(1px); }
+
 .section {
   margin-top: 1rem;
   padding: 1.25rem;
@@ -410,6 +454,7 @@
 
 .action-grid button:active { transform: scale(0.96); }
 .action-grid button.is-selected { border-color: var(--accent); background: var(--accent-soft); }
+.action-grid button:disabled { cursor: not-allowed; opacity: 0.45; }
 .action-grid button span { font-size: 1.55rem; }
 .action-grid button small { font-size: 0.75rem; font-weight: 700; }
 
