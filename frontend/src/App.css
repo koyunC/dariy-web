@@ -184,6 +184,66 @@
   padding: 0.75rem 1rem 4rem;
 }
 
+.verification-page {
+  min-height: calc(100svh - 8rem);
+  padding: 1.25rem 1rem 3rem;
+  display: grid;
+  place-items: center;
+}
+
+.verification-card {
+  width: min(100%, 28rem);
+  padding: 2rem 1.25rem 1.25rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 2rem;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  text-align: center;
+  backdrop-filter: blur(18px);
+}
+
+.verification-mark {
+  width: 4rem;
+  height: 4rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 50%;
+  background: var(--accent-soft);
+  font-size: 1.8rem;
+}
+
+.verification-card h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: ui-rounded, "SF Pro Rounded", "Noto Sans TC", system-ui, sans-serif;
+  font-size: clamp(1.8rem, 8vw, 2.4rem);
+  letter-spacing: -0.035em;
+}
+
+.verification-copy,
+.verification-status {
+  max-width: 22rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.verification-card .error-banner {
+  width: 100%;
+  margin-top: 0;
+  text-align: left;
+}
+
+.verification-card .google-login-button {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
 .welcome-card {
   min-height: 12rem;
   padding: 1.4rem;

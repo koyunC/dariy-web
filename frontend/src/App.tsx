@@ -800,7 +800,29 @@ function App() {
           </section>
         </main>
       ) : (
-        <main className="home-page">
+        <main className={identityReady ? "home-page" : "verification-page"}>
+          {!identityReady ? (
+            <section className="verification-card" aria-labelledby="verification-title">
+              <div className="verification-mark" aria-hidden="true">🔐</div>
+              <p className="eyebrow">身份驗證</p>
+              <h1 id="verification-title">請先驗證身份</h1>
+              <p className="verification-copy">
+                已選擇 {profiles[currentUser].name}，請使用對應的 Google 帳號完成驗證。
+              </p>
+              {error && <div className="error-banner" role="alert">{error}</div>}
+              <p className="verification-status" role="status">
+                {uid ? status : "尚未驗證 Google 帳號"}
+              </p>
+              <button
+                className="google-login-button"
+                type="button"
+                onClick={() => void loginWithGoogle()}
+              >
+                {uid ? "重新驗證 Google" : "使用 Google 登入"}
+              </button>
+            </section>
+          ) : (
+            <>
           <section className="welcome-card">
             <div>
               <p className="eyebrow">
@@ -817,24 +839,6 @@ function App() {
           </section>
 
           {error && <div className="error-banner" role="alert">{error}</div>}
-
-          {!uid && (
-            <section className="google-login-card" aria-labelledby="google-login-title">
-              <div className="google-login-mark" aria-hidden="true">G</div>
-              <div>
-                <p className="eyebrow">Secure sign-in</p>
-                <h2 id="google-login-title">登入後開始記錄</h2>
-                <p>已選擇 {profiles[currentUser].name}，請使用對應的 Google 帳號登入。</p>
-              </div>
-              <button
-                className="google-login-button"
-                type="button"
-                onClick={() => void loginWithGoogle()}
-              >
-                使用 Google 登入
-              </button>
-            </section>
-          )}
 
           {actionProgress && (
             <section className="section progress-section" aria-labelledby="progress-title">
@@ -1396,6 +1400,8 @@ function App() {
               <div><dt>略過</dt><dd>{diagnostics?.skippedDocuments.length ?? "—"}</dd></div>
             </dl>
           </details>
+            </>
+          )}
         </main>
       )}
 
