@@ -7,7 +7,8 @@ export const checkInActions = [
   { id: "cook", icon: "🍳", label: "煮飯" },
   { id: "weight", icon: "⚖️", label: "體重" },
   { id: "snap", icon: "💤", label: "小休" },
-  { id: "snack", icon: "🍜", label: "宵夜" },
+  { id: "snack", icon: "🍜", label: "宵夜/點心" },
+  { id: "sugary_drink", icon: "🥤", label: "含糖飲料" },
 ] as const;
 
 export type CheckInActionId = (typeof checkInActions)[number]["id"];
