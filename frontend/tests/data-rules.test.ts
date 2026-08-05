@@ -24,8 +24,10 @@ import {
   normalizeCheckInGoals,
 } from "../src/lib/preference-rules.ts";
 import {
+  formatDateTimeLocalInTimeZone,
   formatTimestampForUser,
   formatWeightContent,
+  parseDateTimeLocalInTimeZone,
 } from "../src/lib/user-data.ts";
 import { findUsersByAuthUID } from "../src/lib/user-identity.ts";
 
@@ -72,6 +74,24 @@ test("the same timestamp is displayed in the viewer's time zone", () => {
   assert.match(
     formatTimestampForUser(timestamp, "stone"),
     /^2026\/02\/26 20:00:00/,
+  );
+});
+
+test("date-time inputs round-trip in their selected time zone", () => {
+  const timestamp = Date.parse("2026-02-26T12:00:00Z");
+  const localValue = formatDateTimeLocalInTimeZone(
+    timestamp,
+    "America/New_York",
+  );
+
+  assert.equal(localValue, "2026-02-26T07:00");
+  assert.equal(
+    parseDateTimeLocalInTimeZone(localValue, "America/New_York"),
+    timestamp,
+  );
+  assert.equal(
+    parseDateTimeLocalInTimeZone("2026-02-29T07:00", "America/New_York"),
+    null,
   );
 });
 
