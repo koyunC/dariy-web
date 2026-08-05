@@ -35,9 +35,11 @@ import {
   type CheckInProgress,
 } from "./lib/check-in-stats";
 import {
+  formatDateTimeLocalInTimeZone,
   formatTimestampInTimeZone,
   formatWeightContent,
   getTimeZoneLabel,
+  parseDateTimeLocalInTimeZone,
   userDataConventions,
   type WeightUnit,
 } from "./lib/user-data";
@@ -178,6 +180,8 @@ function App() {
   const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const [checkInNote, setCheckInNote] = useState("");
   const [weightValue, setWeightValue] = useState("");
+  const [checkInTimeZone, setCheckInTimeZone] = useState("");
+  const [checkInDateTimeLocal, setCheckInDateTimeLocal] = useState("");
   const [checkInSaving, setCheckInSaving] = useState(false);
   const [checkInMessage, setCheckInMessage] = useState("");
   const [checkInError, setCheckInError] = useState("");
@@ -191,6 +195,8 @@ function App() {
   const [editingNote, setEditingNote] = useState("");
   const [editingWeightValue, setEditingWeightValue] = useState("");
   const [editingWeightUnit, setEditingWeightUnit] = useState<WeightUnit>("kg");
+  const [editingTimeZone, setEditingTimeZone] = useState("");
+  const [editingDateTimeLocal, setEditingDateTimeLocal] = useState("");
   const [recordMutationSaving, setRecordMutationSaving] = useState(false);
   const [recordMutationError, setRecordMutationError] = useState("");
   const [selectedTimelineDayKey, setSelectedTimelineDayKey] =
@@ -328,6 +334,18 @@ function App() {
     () => [...logs].sort((a, b) => getLogTimestamp(b) - getLogTimestamp(a)),
     [logs],
   );
+
+  const availableTimeZones = useMemo(() => {
+    const timeZones = new Set(
+      logs
+        .map((log) => log.recordedTimeZone)
+        .filter((timeZone): timeZone is string => Boolean(timeZone)),
+    );
+    if (timeZoneSync?.effectiveTimeZone) {
+      timeZones.add(timeZoneSync.effectiveTimeZone);
+    }
+    return [...timeZones].sort((left, right) => left.localeCompare(right));
+  }, [logs, timeZoneSync]);
 
   const memoryTimeline = useMemo(() => {
     if (!currentUser || !timeZoneSync) return [];
@@ -472,6 +490,16 @@ function App() {
       selectedTimelineLog.sourceWeightUnit
         ?? userDataConventions[currentUser].weightUnit,
     );
+    const editTimeZone = selectedTimelineLog.recordedTimeZone
+      ?? timeZoneSync?.effectiveTimeZone
+      ?? userDataConventions[currentUser].timeZone;
+    const editTimestamp = getLogTimestamp(selectedTimelineLog);
+    setEditingTimeZone(editTimeZone);
+    setEditingDateTimeLocal(
+      Number.isFinite(editTimestamp)
+        ? formatDateTimeLocalInTimeZone(editTimestamp, editTimeZone)
+        : formatDateTimeLocalInTimeZone(Date.now(), editTimeZone),
+    );
     setRecordMutationError("");
   };
 
@@ -481,6 +509,8 @@ function App() {
     setEditingNote("");
     setEditingWeightValue("");
     setEditingWeightUnit("kg");
+    setEditingTimeZone("");
+    setEditingDateTimeLocal("");
     setRecordMutationError("");
   };
 
@@ -505,11 +535,20 @@ function App() {
         weightValue: editingWeightValue,
         weightUnit: editingWeightUnit,
       });
+      const timeMilliseconds = parseDateTimeLocalInTimeZone(
+        editingDateTimeLocal,
+        editingTimeZone,
+      );
+      if (timeMilliseconds === null) {
+        throw new Error("請輸入有效的記錄日期與時間");
+      }
       const updatedLog = await updateTimeCapsuleLog(
         selectedTimelineLog.id,
         {
           ...prepared,
           user: currentUser,
+          timeZone: editingTimeZone,
+          timeMilliseconds,
         },
       );
 
@@ -673,10 +712,43 @@ function App() {
     setProfileMenuOpen(false);
   };
 
+  const changeCheckInTimeZone = (nextTimeZone: string) => {
+    const currentMilliseconds = checkInTimeZone && checkInDateTimeLocal
+      ? parseDateTimeLocalInTimeZone(checkInDateTimeLocal, checkInTimeZone)
+      : null;
+    setCheckInTimeZone(nextTimeZone);
+    setCheckInDateTimeLocal(
+      formatDateTimeLocalInTimeZone(
+        currentMilliseconds ?? Date.now(),
+        nextTimeZone,
+      ),
+    );
+  };
+
+  const changeEditingTimeZone = (nextTimeZone: string) => {
+    const currentMilliseconds = editingTimeZone && editingDateTimeLocal
+      ? parseDateTimeLocalInTimeZone(editingDateTimeLocal, editingTimeZone)
+      : null;
+    setEditingTimeZone(nextTimeZone);
+    setEditingDateTimeLocal(
+      formatDateTimeLocalInTimeZone(
+        currentMilliseconds ?? Date.now(),
+        nextTimeZone,
+      ),
+    );
+  };
+
   const chooseAction = (actionId: CheckInActionId) => {
     setSelectedAction(actionId);
     setCheckInNote("");
     setWeightValue("");
+    const defaultTimeZone = timeZoneSync?.effectiveTimeZone ?? "";
+    setCheckInTimeZone(defaultTimeZone);
+    setCheckInDateTimeLocal(
+      defaultTimeZone
+        ? formatDateTimeLocalInTimeZone(historyReferenceTime, defaultTimeZone)
+        : "",
+    );
     setCheckInMessage("");
     setCheckInError("");
   };
@@ -696,6 +768,14 @@ function App() {
 
     try {
       const actionId = selectedAction as CheckInActionId;
+      const selectedTimeZone = checkInTimeZone || timeZoneSync.effectiveTimeZone;
+      const timeMilliseconds = parseDateTimeLocalInTimeZone(
+        checkInDateTimeLocal,
+        selectedTimeZone,
+      );
+      if (timeMilliseconds === null) {
+        throw new Error("請輸入有效的記錄日期與時間");
+      }
       const prepared = prepareCheckIn({
         actionId,
         note: checkInNote,
@@ -706,7 +786,8 @@ function App() {
       const createdLog = await createTimeCapsuleLog({
         ...prepared,
         user: currentUser,
-        timeZone: timeZoneSync.effectiveTimeZone,
+        timeZone: selectedTimeZone,
+        timeMilliseconds,
       });
 
       setLogs((currentLogs) => [createdLog, ...currentLogs]);
@@ -721,6 +802,8 @@ function App() {
       setSelectedAction(null);
       setCheckInNote("");
       setWeightValue("");
+      setCheckInTimeZone("");
+      setCheckInDateTimeLocal("");
       setCheckInMessage(`${getActionIcon(actionId)} 打卡成功`);
       setStatus("新回憶已同步");
     } catch (caughtError) {
@@ -997,8 +1080,35 @@ function App() {
                     />
                   </label>
                 )}
+                <label className="check-in-field">
+                  <span>記錄日期與時間</span>
+                  <input
+                    type="datetime-local"
+                    value={checkInDateTimeLocal}
+                    onChange={(event) => setCheckInDateTimeLocal(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="check-in-field">
+                  <span>記錄時區</span>
+                  <select
+                    value={checkInTimeZone}
+                    onChange={(event) => changeCheckInTimeZone(event.target.value)}
+                    required
+                  >
+                    {availableTimeZones.map((timeZone) => (
+                      <option key={timeZone} value={timeZone}>
+                        {getTimeZoneLabel(timeZone)}（{timeZone}）
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <p className="check-in-time-zone">
-                  將以 {getTimeZoneLabel(timeZoneSync?.effectiveTimeZone ?? userDataConventions[currentUser].timeZone)} 記錄
+                  將以 {getTimeZoneLabel(
+                    checkInTimeZone
+                      || timeZoneSync?.effectiveTimeZone
+                      || userDataConventions[currentUser].timeZone,
+                  )} 記錄
                 </p>
                 {checkInError && (
                   <p className="check-in-error" role="alert">{checkInError}</p>
@@ -1247,7 +1357,7 @@ function App() {
                       }}
                     >
                       <p className="memory-edit-note">
-                        可修改類別與內容；原始打卡時間與記錄時區會保留。
+                        可修改類別、內容、記錄日期時間與記錄時區。
                       </p>
                       <label className="check-in-field">
                         <span>類別</span>
@@ -1313,6 +1423,29 @@ function App() {
                           />
                         </label>
                       )}
+                      <label className="check-in-field">
+                        <span>記錄日期與時間</span>
+                        <input
+                          type="datetime-local"
+                          value={editingDateTimeLocal}
+                          onChange={(event) => setEditingDateTimeLocal(event.target.value)}
+                          required
+                        />
+                      </label>
+                      <label className="check-in-field">
+                        <span>記錄時區</span>
+                        <select
+                          value={editingTimeZone}
+                          onChange={(event) => changeEditingTimeZone(event.target.value)}
+                          required
+                        >
+                          {availableTimeZones.map((timeZone) => (
+                            <option key={timeZone} value={timeZone}>
+                              {getTimeZoneLabel(timeZone)}（{timeZone}）
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <div className="memory-edit-actions">
                         <button
                           type="button"

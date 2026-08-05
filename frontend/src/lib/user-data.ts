@@ -77,6 +77,100 @@ export function formatTimestampInTimeZone(
     .replace(/\s+/gu, " ");
 }
 
+function getDateTimeParts(
+  milliseconds: number,
+  timeZone: string,
+): Record<string, string> {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(milliseconds));
+
+  return Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+}
+
+function getTimeZoneOffsetMilliseconds(
+  milliseconds: number,
+  timeZone: string,
+): number {
+  const parts = getDateTimeParts(milliseconds, timeZone);
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return asUtc - milliseconds;
+}
+
+export function formatDateTimeLocalInTimeZone(
+  milliseconds: number,
+  timeZone: string,
+): string {
+  if (!Number.isFinite(milliseconds) || !isValidTimeZone(timeZone)) return "";
+
+  const parts = getDateTimeParts(milliseconds, timeZone);
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  return `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}`;
+}
+
+export function parseDateTimeLocalInTimeZone(
+  value: string,
+  timeZone: string,
+): number | null {
+  if (!isValidTimeZone(timeZone)) return null;
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/u.exec(value);
+  if (!match) return null;
+
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (
+    month < 1 || month > 12
+    || day < 1 || day > 31
+    || hour > 23
+    || minute > 59
+  ) return null;
+
+  const naiveMilliseconds = Date.UTC(year, month - 1, day, hour, minute);
+  const naiveDate = new Date(naiveMilliseconds);
+  if (
+    naiveDate.getUTCFullYear() !== year
+    || naiveDate.getUTCMonth() !== month - 1
+    || naiveDate.getUTCDate() !== day
+    || naiveDate.getUTCHours() !== hour
+    || naiveDate.getUTCMinutes() !== minute
+  ) return null;
+
+  let milliseconds = naiveMilliseconds;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    milliseconds = naiveMilliseconds - getTimeZoneOffsetMilliseconds(
+      milliseconds,
+      timeZone,
+    );
+  }
+
+  return formatDateTimeLocalInTimeZone(milliseconds, timeZone) === value
+    ? milliseconds
+    : null;
+}
+
 export function formatTimestampForUser(
   milliseconds: number,
   user: CurrentUser,

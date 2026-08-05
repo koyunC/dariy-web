@@ -59,12 +59,15 @@ export type CreateTimeCapsuleLogInput = {
   content: string;
   user: CurrentUser;
   timeZone: string;
+  timeMilliseconds: number;
 };
 
 export type UpdateTimeCapsuleLogInput = {
   actionId: CheckInActionId;
   content: string;
   user: CurrentUser;
+  timeZone: string;
+  timeMilliseconds: number;
 };
 
 function describeType(value: unknown): string {
@@ -232,6 +235,9 @@ export async function createTimeCapsuleLog(
   if (!isValidTimeZone(input.timeZone)) {
     throw new Error("無法寫入：目前時區無效");
   }
+  if (!Number.isFinite(input.timeMilliseconds)) {
+    throw new Error("無法寫入：記錄時間無效");
+  }
 
   const documentReference = await addDoc(
     collection(db, "time_capsule_logs"),
@@ -239,7 +245,7 @@ export async function createTimeCapsuleLog(
       actionId: input.actionId,
       content: input.content,
       createdAt: serverTimestamp(),
-      time: serverTimestamp(),
+      time: Timestamp.fromMillis(input.timeMilliseconds),
       updatedAt: serverTimestamp(),
       user: input.user,
       timeZone: input.timeZone,
@@ -276,13 +282,22 @@ export async function updateTimeCapsuleLog(
   id: string,
   input: UpdateTimeCapsuleLogInput,
 ): Promise<TimeCapsuleLog> {
+  if (!isValidTimeZone(input.timeZone)) {
+    throw new Error("無法更新：記錄時區無效");
+  }
+  if (!Number.isFinite(input.timeMilliseconds)) {
+    throw new Error("無法更新：記錄時間無效");
+  }
+
   const { reference } = await getOwnedLog(id, input.user);
 
-  // Preserve the original author, recorded time, and time zone. Editing only
-  // changes the category/content and records when the edit was made.
+  // Preserve the original author and creation time. Editing updates the
+  // recorded time, time zone, category/content, and edit timestamp.
   await updateDoc(reference, {
     actionId: input.actionId,
     content: input.content,
+    time: Timestamp.fromMillis(input.timeMilliseconds),
+    timeZone: input.timeZone,
     updatedAt: serverTimestamp(),
   });
 
