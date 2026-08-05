@@ -18,6 +18,24 @@
 
 * { box-sizing: border-box; }
 
+/* Prevent accidental long-press/text selection across the app. Form fields
+   remain selectable so editing and accessibility interactions are preserved. */
+#root,
+#root * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#root input,
+#root textarea,
+#root select,
+#root [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 html { min-width: 320px; background: #f8f5f1; }
 
 body { margin: 0; min-width: 320px; min-height: 100svh; }
