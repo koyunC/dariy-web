@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { checkInActions } from "../src/lib/action-catalog.ts";
 import { isWithinRecentHistory } from "../src/lib/history.ts";
 import {
   calculateCheckInProgress,
@@ -295,6 +296,10 @@ test("goal defaults and stored overrides are normalized", () => {
     targetCount: 1,
     periodDays: 1,
   });
+  assert.deepEqual(defaultCheckInGoals.sugary_drink, {
+    targetCount: 1,
+    periodDays: 1,
+  });
 
   const goals = normalizeCheckInGoals({
     exercise: { targetCount: 2, periodDays: 3 },
@@ -305,6 +310,17 @@ test("goal defaults and stored overrides are normalized", () => {
   assert.deepEqual(goals.miss_you, { targetCount: 1, periodDays: 1 });
   assert.equal(hasCompleteCheckInGoals(goals), true);
   assert.equal(hasCompleteCheckInGoals({ exercise: goals.exercise }), false);
+});
+
+test("check-in catalog includes the renamed snack label and sugary drinks", () => {
+  assert.equal(
+    checkInActions.find((action) => action.id === "snack")?.label,
+    "宵夜/點心",
+  );
+  assert.deepEqual(
+    checkInActions.find((action) => action.id === "sugary_drink"),
+    { id: "sugary_drink", icon: "🥤", label: "含糖飲料" },
+  );
 });
 
 test("exercise completes one goal period with one check-in every two days", () => {

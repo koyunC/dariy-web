@@ -39,9 +39,9 @@ From the repository root, deploy a named channel:
 
 ```bash
 npm --prefix frontend run build
-firebase hosting:channel:deploy dev-<your-name> \
+firebase hosting:channel:deploy <deploy-name> \
   --project parallel-time \
-  --expires 7d
+  --expires 3d
 ```
 
 The Vite build reads the local `frontend/.env.local` file. Never commit that file or paste its contents into chat or documentation. Firebase CLI prints the Preview URL when the deployment finishes. Deploying the same channel ID updates the existing Preview channel.
@@ -49,7 +49,7 @@ The Vite build reads the local `frontend/.env.local` file. Never commit that fil
 Delete an unused Preview channel with:
 
 ```bash
-firebase hosting:channel:delete dev-<your-name> --project parallel-time
+firebase hosting:channel:delete <deploy-name> --project parallel-time
 ```
 
 ## Manually deploy the production live channel
